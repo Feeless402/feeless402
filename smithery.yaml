@@ -1,0 +1,12 @@
+# Smithery configuration — https://smithery.ai/docs
+# Local stdio MCP server: pip install feeless402, runs as `nano-pay mcp`.
+startCommand:
+  type: stdio
+  configSchema:
+    type: object
+    properties: {}
+  commandFunction: |-
+    (config) => ({
+      command: "uvx",
+      args: ["feeless402", "mcp"]
+    })
