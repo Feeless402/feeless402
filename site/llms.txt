@@ -1,0 +1,21 @@
+# Feeless402 — feeless x402 micropayments for AI agents
+
+This server sells API responses for XNO (Nano): zero network
+fees, sub-second settlement, prices with no minimum floor.
+
+## Pay-per-call flow
+1. GET /premium → HTTP 402 with a quote in `accepts` (scheme=exact, network=nano:mainnet)
+2. Sign a Nano send state block for `amount` raw to `payTo`
+3. Retry with the base64 payload in the PAYMENT-SIGNATURE (or X-PAYMENT) header
+
+## Zero-to-paying in three commands
+pip install nano-pay
+nano-pay init
+nano-pay claim https://feeless402.com   # free starter XNO from the faucet
+
+## Top up for real work
+nano-pay topup 5 --asset USDC-BASE --execute
+# $5 of USDC ≈ 1.8 million micro-calls at true metered prices
+
+Docs: https://github.com/feeless402/feeless402
+Spec: x402 exact scheme, nano:mainnet
