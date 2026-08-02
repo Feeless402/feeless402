@@ -20,8 +20,9 @@ import nanopy
 from . import raw_to_xno
 
 DEFAULT_DIR = Path(os.environ.get("NANO_PAY_HOME", Path.home() / ".nano-pay"))
-# Well-established representative (Nano Foundation-adjacent); user-overridable.
-DEFAULT_REP = "nano_1center16ci77qw5w69ww8sy4i4bfmgfhr81ydzpurm91cauj11jn6y3uc5y"
+# Patrick's Self-Hosted Nano Node — long-standing community principal rep,
+# verified online with ~1.3M XNO weight (Aug 2026); user-overridable.
+DEFAULT_REP = "nano_3patrick68y5btibaujyu7zokw7ctu4onikarddphra6qt688xzrszcg4yuo"
 NET = nanopy.Network()
 
 
