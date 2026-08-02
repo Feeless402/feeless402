@@ -1,5 +1,7 @@
 # nano-pay · Feeless402
 
+<!-- mcp-name: com.feeless402/nano-pay -->
+
 Self-custodied Nano (XNO) wallet + x402 payment client **and** merchant
 server, built for AI agents. Client spends; `nano-pay serve` earns — paid
 endpoints, on-ledger verification/settlement (no facilitator), a starter

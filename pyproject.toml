@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "feeless402"
-version = "0.2.0"
+version = "0.2.1"
 description = "Feeless x402 micropayments for AI agents — self-custodied XNO wallet, pay-per-call client, merchant server with railHint, faucet, and MCP server"
 readme = "README.md"
 license = { text = "MIT" }
@@ -33,6 +33,7 @@ all = ["fastapi", "uvicorn[standard]", "mcp>=2.0"]
 [project.scripts]
 nano-pay = "nano_pay.cli:main"
 f402 = "nano_pay.cli:main"
+feeless402 = "nano_pay.cli:main"
 
 [tool.setuptools]
 packages = ["nano_pay"]
