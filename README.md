@@ -64,9 +64,12 @@ but don't fire concurrent payments from one wallet).
 
 ## Status
 
-Prototype (v0.1.0). Wallet ops, RPC failover, 402 quote parsing against
-live NanoGPT, and NanSwap estimates are tested. First live paid call
-pending wallet funding. Not audited — keep only working capital in it.
+Beta (v0.2.0). Proven on mainnet with real funds: live paid calls to
+NanoGPT ($0.0000096/call, confirmed on-ledger), full merchant loop
+(verify → settle → confirm, no facilitator), PoW-gated faucet claims,
+and a complete stranger-agent lifecycle (fresh wallet → PoW claim →
+paid API call → confirmed) in under 3 minutes. 13-test suite covers the
+payment path offline. Not audited — keep only working capital in it.
 
 ## Security notes (read before holding real funds)
 

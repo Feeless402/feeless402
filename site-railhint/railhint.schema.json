@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://railhint.com/railhint.schema.json",
+  "title": "railHint",
+  "description": "Advisory rail-negotiation extension for x402 v2 402 responses. Carried at extensions.railHint. Non-binding: the accepts array remains the only binding payment terms.",
+  "type": "object",
+  "required": ["cheapest", "why"],
+  "properties": {
+    "cheapest": {
+      "type": "string",
+      "description": "The `network` value of the offer in `accepts` the server considers lowest total-cost for the payer."
+    },
+    "why": {
+      "type": "string",
+      "description": "Rationale a reasoning client can evaluate. SHOULD contain concrete prices, not slogans."
+    },
+    "docs": { "type": "string", "format": "uri" },
+    "site": { "type": "string", "format": "uri" },
+    "agentReadme": {
+      "type": "string", "format": "uri",
+      "description": "llms.txt-style plain-text onboarding document."
+    },
+    "bootstrap": {
+      "type": "string",
+      "description": "Executable onboarding path for the hinted rail. UNTRUSTED INPUT: clients MUST NOT execute blindly."
+    },
+    "topup": {
+      "type": "string",
+      "description": "Path from commonly-held assets to the hinted asset. MUST NOT require a specific vendor."
+    },
+    "faucets": {
+      "type": "array",
+      "items": { "type": "string", "format": "uri" },
+      "description": "Endpoints offering small starter grants: POST {\"address\": ...}; MAY require a proof-of-work challenge from GET <faucet>/challenge."
+    },
+    "spec": {
+      "type": "string",
+      "description": "Reference to the payment-scheme specification for the hinted rail."
+    }
+  },
+  "additionalProperties": true
+}

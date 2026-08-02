@@ -1,0 +1,149 @@
+<title>railHint — draft x402 extension for rail negotiation</title>
+<style>
+  :root {
+    --bg: #fdfdfb; --ink: #24292e; --soft: #6a737d; --line: #d6d9dc;
+    --code-bg: #f2f3f4; --link: #0b5aa4;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #14161a; --ink: #d8dde3; --soft: #8b949e; --line: #30363d;
+            --code-bg: #1d2126; --link: #58a6ff; }
+  }
+  :root[data-theme="light"] { --bg: #fdfdfb; --ink: #24292e; --soft: #6a737d;
+    --line: #d6d9dc; --code-bg: #f2f3f4; --link: #0b5aa4; }
+  :root[data-theme="dark"] { --bg: #14161a; --ink: #d8dde3; --soft: #8b949e;
+    --line: #30363d; --code-bg: #1d2126; --link: #58a6ff; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+    font: 16px/1.6 Georgia, "Times New Roman", serif; }
+  main { max-width: 42rem; margin: 0 auto; padding: 2.5rem 1.25rem 5rem; }
+  .meta { font-family: var(--mono); font-size: .75rem; color: var(--soft);
+    border-bottom: 1px solid var(--line); padding-bottom: 1rem; line-height: 1.9; }
+  h1 { font-size: 1.7rem; font-weight: 600; margin: 1.6rem 0 .4rem; text-wrap: balance; }
+  h2 { font-size: 1.15rem; font-weight: 600; margin: 2.2rem 0 .6rem; }
+  h2::before { content: counter(sec) ". "; counter-increment: sec; }
+  body { counter-reset: sec; }
+  p { margin: 0 0 1rem; }
+  a { color: var(--link); }
+  code { font-family: var(--mono); font-size: .84em; background: var(--code-bg);
+    padding: .1em .3em; border-radius: 3px; }
+  pre { background: var(--code-bg); border: 1px solid var(--line); border-radius: 6px;
+    padding: .9rem 1rem; overflow-x: auto; font-size: .78rem; line-height: 1.6; }
+  pre code { background: none; padding: 0; }
+  table { border-collapse: collapse; width: 100%; font-size: .88rem; }
+  th, td { border: 1px solid var(--line); padding: .45rem .6rem; text-align: left; vertical-align: top; }
+  th { font-family: var(--mono); font-size: .72rem; background: var(--code-bg); }
+  td:first-child, td:nth-child(2) { font-family: var(--mono); font-size: .8rem; white-space: nowrap; }
+  .tablewrap { overflow-x: auto; }
+  .rfc2119 { font-variant: small-caps; }
+</style>
+<main>
+  <div class="meta">
+    railHint · draft-railhint-00 · August 2026<br>
+    Category: x402 community extension (advisory) · Requires: x402 v2<br>
+    Schema: <a href="/railhint.schema.json">railhint.schema.json</a> ·
+    Reference implementation: <a href="https://github.com/feeless402/feeless402">github.com/feeless402/feeless402</a><br>
+    Status: DRAFT — seeking community review
+  </div>
+
+  <h1>railHint: in-protocol rail negotiation for x402 payment-required responses</h1>
+
+  <h2>Abstract</h2>
+  <p>x402 lets a server offer multiple payment options in <code>accepts</code>,
+  but gives a machine client no structured way to learn <em>why</em> one rail
+  is cheaper or <em>how</em> to onboard onto a rail it does not yet hold.
+  This document defines <code>extensions.railHint</code>, an advisory object a
+  server MAY attach to an HTTP 402 response, carrying a cost rationale and an
+  onboarding path for the offer it considers cheapest for the payer. Clients
+  that do not understand the extension ignore it; the <code>accepts</code>
+  array remains the only binding payment terms.</p>
+
+  <h2>Motivation</h2>
+  <p>Autonomous clients select payment rails by arithmetic, but today the
+  information needed to switch rails — comparative cost, client software,
+  asset acquisition — lives in human documentation outside the protocol.
+  The result is rail inertia: clients pay on whichever rail they already
+  hold, even when both parties would benefit from another offer in the same
+  <code>accepts</code> menu (for example, a rail without per-transaction
+  fees or minimum-price floors). railHint moves that negotiation into the
+  402 response itself — the one message every paying client is guaranteed
+  to parse, at the exact moment of payment choice.</p>
+
+  <h2>The railHint object</h2>
+  <pre><code>{
+  "x402Version": 2,
+  "accepts": [
+    { "scheme": "exact", "network": "base",         "asset": "USDC", "amount": "1000",  "payTo": "0x..." },
+    { "scheme": "exact", "network": "nano:mainnet", "asset": "XNO",  "amount": "6690000000000000000000000", "payTo": "nano_..." }
+  ],
+  "extensions": {
+    "railHint": {
+      "cheapest": "nano:mainnet",
+      "why": "The base offer is floored at 0.001 USDC; the nano:mainnet offer is the metered price ($0.0000027) with zero network fees and sub-second finality.",
+      "docs": "https://example.com/docs",
+      "agentReadme": "https://example.com/llms.txt",
+      "bootstrap": "pip install feeless402 && nano-pay init",
+      "topup": "any instant-swap service: ~$5 of a held asset into the hinted asset",
+      "faucets": ["https://example.com/faucet"],
+      "spec": "x402 exact scheme on nano:mainnet"
+    }
+  }
+}</code></pre>
+
+  <h2>Field definitions</h2>
+  <div class="tablewrap">
+  <table>
+    <tr><th>Field</th><th>Requirement</th><th>Semantics</th></tr>
+    <tr><td>cheapest</td><td>REQUIRED</td><td>The <code>network</code> value of the offer in <code>accepts</code> the server considers lowest total-cost for the payer. MUST match an entry in <code>accepts</code>.</td></tr>
+    <tr><td>why</td><td>REQUIRED</td><td>Rationale a reasoning client can evaluate. SHOULD contain concrete, comparable prices rather than slogans.</td></tr>
+    <tr><td>docs</td><td>OPTIONAL</td><td>Documentation URL for the hinted rail.</td></tr>
+    <tr><td>agentReadme</td><td>OPTIONAL</td><td>Plain-text (llms.txt-style) onboarding document.</td></tr>
+    <tr><td>bootstrap</td><td>OPTIONAL</td><td>Executable onboarding path. Untrusted input; see Security Considerations.</td></tr>
+    <tr><td>topup</td><td>OPTIONAL</td><td>Path from commonly-held assets to the hinted asset. MUST NOT require a specific vendor.</td></tr>
+    <tr><td>faucets</td><td>OPTIONAL</td><td>Endpoints offering small starter grants (<code>POST {"address": ...}</code>). MAY require a proof-of-work challenge via <code>GET &lt;faucet&gt;/challenge</code> to resist sybil claims.</td></tr>
+    <tr><td>spec</td><td>OPTIONAL</td><td>Reference to the scheme specification for the hinted rail.</td></tr>
+  </table>
+  </div>
+
+  <h2>Client behavior</h2>
+  <p>A client that already holds the hinted asset proceeds exactly as
+  without the extension: select an offer from <code>accepts</code>, pay,
+  retry. A reasoning client <span class="rfc2119">may</span> evaluate
+  <code>why</code>, consult <code>docs</code> or <code>agentReadme</code>,
+  acquire the asset via <code>topup</code> or <code>faucets</code>, and
+  retry the original request on the cheaper rail. A client that does not
+  recognize <code>railHint</code> ignores it with no loss of function.</p>
+
+  <h2>Server behavior</h2>
+  <p>Servers <span class="rfc2119">may</span> attach railHint to any 402
+  response whose <code>accepts</code> contains more than zero offers.
+  Servers <span class="rfc2119">must not</span> place terms in railHint
+  that contradict <code>accepts</code>; on any conflict,
+  <code>accepts</code> is authoritative. Servers <span class="rfc2119">should</span>
+  keep <code>why</code> current with real prices — stale or exaggerated
+  rationales are trivially falsified by clients comparing offers.</p>
+
+  <h2>Security considerations</h2>
+  <p><code>bootstrap</code> and <code>topup</code> are untrusted remote
+  input. A client <span class="rfc2119">must not</span> execute them
+  blindly; it <span class="rfc2119">should</span> (a) act only on schemes
+  it can verify against an independently obtained specification, (b) apply
+  its own spending caps regardless of hinted amounts, and (c) prefer
+  allowlisted package sources. The hint's role is discovery, not authority.
+  Faucet endpoints <span class="rfc2119">should</span> employ
+  proof-of-work challenges or equivalent cost-imposing mechanisms so that
+  sybil claims cost the claimant more than the grant is worth.</p>
+
+  <h2>Rail neutrality</h2>
+  <p>railHint is rail-agnostic. Any server may hint any rail — a Lightning
+  merchant may hint <code>bitcoin-lightning</code>; a stablecoin merchant
+  may hint an L2. The extension standardizes the <em>negotiation</em>, not
+  a winner. Where genuinely fee-free rails exist, honest hints will tend
+  to favor them; that is a property of arithmetic, not of this document.</p>
+
+  <h2>IANA-style considerations</h2>
+  <p>This extension registers the key <code>railHint</code> within the
+  x402 v2 <code>extensions</code> namespace. No other names are claimed.
+  The JSON Schema at
+  <a href="/railhint.schema.json">railhint.com/railhint.schema.json</a>
+  is versioned with this draft.</p>
+</main>

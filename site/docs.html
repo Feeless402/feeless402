@@ -1,0 +1,148 @@
+<title>Docs — Feeless402</title>
+<style>
+  :root {
+    --paper: #f3f5f7; --panel: #ffffff; --ink: #1c2420; --ink-soft: #55605a;
+    --line: #d8dedb; --accent: #0d8a58; --accent-ink: #0a6b45; --amber: #b97d10;
+    --term-bg: #182019; --term-ink: #d7e4da; --term-dim: #7d8f84;
+    --mono: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Menlo, Consolas, monospace;
+    --serif: Charter, "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --paper: #11150f; --panel: #181d16; --ink: #e2e8e0; --ink-soft: #98a396;
+      --line: #2a3328; --accent: #35c07f; --accent-ink: #4fd394; --amber: #d9a032;
+      --term-bg: #0c100c; --term-ink: #cfdcd2; --term-dim: #6f8073; }
+  }
+  :root[data-theme="light"] { --paper:#f3f5f7; --panel:#fff; --ink:#1c2420; --ink-soft:#55605a; --line:#d8dedb; --accent:#0d8a58; --accent-ink:#0a6b45; --amber:#b97d10; --term-bg:#182019; --term-ink:#d7e4da; --term-dim:#7d8f84; }
+  :root[data-theme="dark"] { --paper:#11150f; --panel:#181d16; --ink:#e2e8e0; --ink-soft:#98a396; --line:#2a3328; --accent:#35c07f; --accent-ink:#4fd394; --amber:#d9a032; --term-bg:#0c100c; --term-ink:#cfdcd2; --term-dim:#6f8073; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--paper); color: var(--ink);
+    font-family: var(--serif); font-size: 17px; line-height: 1.65; }
+  main { max-width: 44rem; margin: 0 auto; padding: 0 1.25rem 5rem; }
+  header { padding: 2.2rem 0 0; display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+  .brand { font-family: var(--mono); font-size: .95rem; }
+  .brand a { color: inherit; text-decoration: none; }
+  .brand b { color: var(--accent-ink); }
+  nav { font-family: var(--mono); font-size: .78rem; display: flex; gap: 1.1rem; }
+  a { color: var(--accent-ink); text-underline-offset: 3px; }
+  .rail { border: 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); height: 4px; margin: 2.2rem 0; }
+  h1 { font-size: 1.9rem; font-weight: 600; margin: 2rem 0 .6rem; text-wrap: balance; }
+  h2 { font-size: 1.3rem; font-weight: 600; margin: 2.4rem 0 .7rem; }
+  h3 { font-size: 1.02rem; font-weight: 700; margin: 1.6rem 0 .4rem; }
+  p, li { margin: 0 0 1rem; }
+  .eyebrow { font-family: var(--mono); font-size: .72rem; letter-spacing: .14em; text-transform: uppercase; color: var(--accent-ink); margin: 2.6rem 0 .4rem; }
+  code { font-family: var(--mono); font-size: .85em; background: color-mix(in srgb, var(--accent) 9%, transparent); padding: .1em .35em; border-radius: 4px; }
+  pre { background: var(--term-bg); color: var(--term-ink); border-radius: 8px; border: 1px solid var(--line);
+    padding: .9rem 1.05rem; font-family: var(--mono); font-size: .78rem; line-height: 1.7; overflow-x: auto; }
+  pre code { background: none; padding: 0; color: inherit; }
+  .dim { color: var(--term-dim); }
+  table { border-collapse: collapse; width: 100%; font-size: .92rem; }
+  th, td { text-align: left; padding: .5rem .7rem; border-bottom: 1px solid var(--line); }
+  th { font-family: var(--mono); font-size: .68rem; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-soft); }
+  td:first-child { font-family: var(--mono); font-size: .82rem; white-space: nowrap; }
+  .tablewrap { overflow-x: auto; }
+  .warn { border-left: 3px solid var(--amber); background: var(--panel); padding: .8rem 1rem; border-radius: 0 8px 8px 0; font-size: .95rem; }
+</style>
+<main>
+  <header>
+    <div class="brand"><a href="/"><b>feeless402</b></a> / docs</div>
+    <nav><a href="/">Home</a><a href="/docs.html">Docs</a><a href="/faucet.html">Faucet</a><a href="https://railhint.com">Spec</a><a href="/llms.txt">llms.txt</a></nav>
+  </header>
+
+  <h1>Documentation</h1>
+  <p>One package, both sides of the machine economy: <strong>spend</strong>
+  (pay any x402 endpoint per call) and <strong>earn</strong> (sell your own
+  API responses for exact micro-prices). Self-custodied throughout — your
+  keys, your money, no accounts anywhere.</p>
+
+  <p class="eyebrow">Spend</p>
+  <h2>Install & fund</h2>
+  <pre><code>pip install feeless402
+nano-pay init                     <span class="dim"># wallet at ~/.nano-pay/wallet.json — back up the seed</span>
+nano-pay claim --auto             <span class="dim"># free starter XNO (solves the faucet's PoW, ~1 min CPU)</span>
+nano-pay topup 5 --asset USDC-BASE --execute   <span class="dim"># real working capital, ~$0.02 min</span>
+nano-pay receive                  <span class="dim"># pocket incoming funds</span>
+nano-pay status</code></pre>
+  <p><code>topup</code> quotes and creates swaps directly with an instant-swap
+  service (default NanSwap; estimates need no key, execution needs a free
+  <code>NANSWAP_API_KEY</code>). Funds go straight to your own wallet —
+  nothing here ever holds your money.</p>
+
+  <h2>Pay per call</h2>
+  <pre><code>nano-pay quote URL                <span class="dim"># see the price — pays nothing</span>
+nano-pay compare URL              <span class="dim"># price the call on EVERY offered rail, live</span>
+nano-pay pay URL [--json BODY] [--max-xno 0.05]</code></pre>
+  <p><code>pay</code> runs the whole x402 handshake: reads the 402 quote
+  (both major Nano dialects), refuses anything above your cap, signs a send
+  block locally, retries with the payment header. The merchant settles it;
+  confirmation lands in under a second. Try it against a live endpoint:</p>
+  <pre><code>nano-pay pay https://nano-gpt.com/api/v1/chat/completions \
+  --json '{"model":"gpt-5-nano","messages":[{"role":"user","content":"hello"}]}'</code></pre>
+
+  <h2>Agents: MCP server</h2>
+  <p>Give any MCP-speaking agent (Claude Code, Cursor, and friends) native
+  feeless payments:</p>
+  <pre><code>pip install "feeless402[mcp]"
+claude mcp add feeless402 -- nano-pay mcp</code></pre>
+  <p>Tools exposed: <code>wallet_status</code>, <code>x402_quote</code>,
+  <code>x402_compare</code>, <code>x402_pay</code> (with spend cap),
+  <code>faucet_claim</code>, <code>topup_quote</code>. The seed is never
+  readable through any tool.</p>
+
+  <p class="eyebrow">Earn</p>
+  <h2>Sell your API for micro-prices</h2>
+  <pre><code>pip install "feeless402[server]"
+nano-pay serve --port 8402</code></pre>
+  <p>Every unpaid request gets a standards-compliant 402 with your price in
+  <code>accepts</code> and a <a href="https://railhint.com">railHint</a>
+  block that teaches visiting agents how to onboard — docs, bootstrap
+  command, faucet list. Incoming payments are verified against the live
+  ledger (payer frontier, exact amount, destination, signature, replay
+  guard) and settled on-chain by your own server. No facilitator, no
+  processor, no percentage.</p>
+  <div class="tablewrap">
+  <table>
+    <tr><th>Env var</th><th>Default</th><th>Meaning</th></tr>
+    <tr><td>F402_PRICE_XNO</td><td>0.0001</td><td>price per call</td></tr>
+    <tr><td>F402_SITE_URL</td><td>https://feeless402.com</td><td>your public base URL (used in hints)</td></tr>
+    <tr><td>F402_FAUCET_XNO</td><td>0.005</td><td>starter grant size</td></tr>
+    <tr><td>F402_FAUCET_POW</td><td>0</td><td>1 = require proof-of-work on claims (recommended public)</td></tr>
+    <tr><td>F402_FAUCETS</td><td>this site</td><td>comma-sep federation list advertised in railHint</td></tr>
+  </table>
+  </div>
+  <p style="margin-top:1rem"><code>serve</code> auto-creates two wallets under
+  <code>~/.nano-pay/</code>: <code>server-wallet.json</code> (your treasury)
+  and <code>faucet-wallet.json</code> (fund it to give out starter grants —
+  every grantee is a future customer).</p>
+
+  <p class="eyebrow">Reference</p>
+  <h2>All commands</h2>
+  <div class="tablewrap">
+  <table>
+    <tr><th>Command</th><th>Does</th></tr>
+    <tr><td>init [--seed HEX]</td><td>create or import wallet</td></tr>
+    <tr><td>address / status / receive</td><td>inspect + pocket funds</td></tr>
+    <tr><td>send ADDR XNO</td><td>direct transfer</td></tr>
+    <tr><td>quote / compare / pay URL</td><td>x402 client (see above)</td></tr>
+    <tr><td>claim [URL] [--auto]</td><td>starter grant; --auto walks the faucet federation</td></tr>
+    <tr><td>topup AMT [--asset X] [--execute]</td><td>swap into XNO, self-custodied</td></tr>
+    <tr><td>serve / mcp</td><td>merchant server / MCP stdio server</td></tr>
+    <tr><td>prework</td><td>pre-compute PoW so the next payment is instant</td></tr>
+  </table>
+  </div>
+
+  <h2>Security model</h2>
+  <ul>
+    <li>Seed lives only in <code>~/.nano-pay/*.json</code> (0600); no command prints it. Back it up offline.</li>
+    <li>Per-payment cap: <code>--max-xno</code> (default 0.05 XNO). Quotes above it are refused, not negotiated.</li>
+    <li>railHint from remote servers is advisory, untrusted input — this client acts only on offers that pass its own checks; <code>accepts</code> binds, hints never do.</li>
+    <li>Merchant side verifies payer frontier + exact balance decrease + destination + signature against the live ledger, and rejects duplicate-frontier replays.</li>
+  </ul>
+  <div class="warn"><strong>Beta software handling real money.</strong> Keep
+  working capital only — a few dollars. Not audited. MIT license, no warranty.</div>
+
+  <h2>Source & spec</h2>
+  <p>Code: <a href="https://github.com/feeless402/feeless402">github.com/feeless402/feeless402</a> (MIT)<br>
+  railHint extension spec: <a href="https://railhint.com">railhint.com</a><br>
+  x402 standard: <a href="https://x402.org">x402.org</a> (Linux Foundation)<br>
+  Engine: <a href="https://nano.org">Nano (XNO)</a></p>
+</main>

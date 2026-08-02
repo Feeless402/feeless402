@@ -1,0 +1,87 @@
+<title>Faucet — Feeless402</title>
+<style>
+  :root {
+    --paper: #f3f5f7; --panel: #ffffff; --ink: #1c2420; --ink-soft: #55605a;
+    --line: #d8dedb; --accent: #0d8a58; --accent-ink: #0a6b45; --amber: #b97d10;
+    --term-bg: #182019; --term-ink: #d7e4da; --term-dim: #7d8f84;
+    --mono: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Menlo, Consolas, monospace;
+    --serif: Charter, "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --paper: #11150f; --panel: #181d16; --ink: #e2e8e0; --ink-soft: #98a396;
+      --line: #2a3328; --accent: #35c07f; --accent-ink: #4fd394; --amber: #d9a032;
+      --term-bg: #0c100c; --term-ink: #cfdcd2; --term-dim: #6f8073; }
+  }
+  :root[data-theme="light"] { --paper:#f3f5f7; --panel:#fff; --ink:#1c2420; --ink-soft:#55605a; --line:#d8dedb; --accent:#0d8a58; --accent-ink:#0a6b45; --amber:#b97d10; --term-bg:#182019; --term-ink:#d7e4da; --term-dim:#7d8f84; }
+  :root[data-theme="dark"] { --paper:#11150f; --panel:#181d16; --ink:#e2e8e0; --ink-soft:#98a396; --line:#2a3328; --accent:#35c07f; --accent-ink:#4fd394; --amber:#d9a032; --term-bg:#0c100c; --term-ink:#cfdcd2; --term-dim:#6f8073; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--paper); color: var(--ink);
+    font-family: var(--serif); font-size: 17px; line-height: 1.65; }
+  main { max-width: 44rem; margin: 0 auto; padding: 0 1.25rem 5rem; }
+  header { padding: 2.2rem 0 0; display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+  .brand { font-family: var(--mono); font-size: .95rem; }
+  .brand a { color: inherit; text-decoration: none; }
+  .brand b { color: var(--accent-ink); }
+  nav { font-family: var(--mono); font-size: .78rem; display: flex; gap: 1.1rem; }
+  a { color: var(--accent-ink); text-underline-offset: 3px; }
+  h1 { font-size: 1.9rem; font-weight: 600; margin: 2rem 0 .6rem; text-wrap: balance; }
+  h2 { font-size: 1.25rem; font-weight: 600; margin: 2.2rem 0 .6rem; }
+  p, li { margin: 0 0 1rem; }
+  code { font-family: var(--mono); font-size: .85em; background: color-mix(in srgb, var(--accent) 9%, transparent); padding: .1em .35em; border-radius: 4px; }
+  pre { background: var(--term-bg); color: var(--term-ink); border-radius: 8px; border: 1px solid var(--line);
+    padding: .9rem 1.05rem; font-family: var(--mono); font-size: .78rem; line-height: 1.7; overflow-x: auto; }
+  .dim { color: var(--term-dim); }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 1rem 1.2rem; margin: 1.2rem 0; }
+  .mono { font-family: var(--mono); font-size: .8rem; word-break: break-all; }
+</style>
+<main>
+  <header>
+    <div class="brand"><a href="/"><b>feeless402</b></a> / faucet</div>
+    <nav><a href="/">Home</a><a href="/docs.html">Docs</a><a href="/faucet.html">Faucet</a><a href="https://railhint.com">Spec</a><a href="/llms.txt">llms.txt</a></nav>
+  </header>
+
+  <h1>The first tank is free</h1>
+  <p>This faucet gives any agent (or human) <strong>0.005 XNO</strong> to
+  start with — enough for hundreds of real API calls at metered micro-prices,
+  because on a feeless rail a starter grant is a working budget, not a
+  souvenir. Nano itself was originally distributed by faucet in 2015–2017;
+  this one just serves machines instead of captchas.</p>
+
+  <h2>Claim (agents)</h2>
+  <pre><code>pip install feeless402
+nano-pay init
+nano-pay claim https://feeless402.com   <span class="dim"># or: claim --auto to walk the federation</span></code></pre>
+  <p>Or raw HTTP:</p>
+  <pre><code>GET  /faucet/challenge?address=nano_yourshere   <span class="dim"># returns {root, difficulty}</span>
+<span class="dim"># solve: work_generate(root, difficulty) — ~1 min of CPU</span>
+POST /faucet   {"address": "nano_yourshere", "work": "&lt;16-hex&gt;"}</code></pre>
+
+  <h2>Why the proof-of-work?</h2>
+  <p>Instead of captchas (which keep out exactly the machine customers we
+  want), claims cost compute. A genuine agent pays about a minute of CPU
+  once. A sybil farm minting addresses pays that <em>per fake claim</em>,
+  for a grant worth a fraction of a cent — the attack costs more than the
+  loot. It's the same asymmetric-work idea Nano uses to keep its network
+  spam-resistant, applied to the watering hole.</p>
+
+  <h2>Limits</h2>
+  <ul>
+    <li>One claim per Nano address, ever.</li>
+    <li>Three claims per IP per day.</li>
+    <li>Grant size and rules may change as the federation grows.</li>
+  </ul>
+
+  <h2>Run your own — join the federation</h2>
+  <p>Any merchant can be a faucet: <code>nano-pay serve</code> includes one.
+  Fund your <code>faucet-wallet.json</code>, set
+  <code>F402_FAUCET_POW=1</code>, and list sibling faucets in
+  <code>F402_FAUCETS</code> — they're advertised to every visitor in your
+  402's railHint. Grants are customer acquisition: everyone you fund is one
+  payment away from being your customer.</p>
+
+  <div class="panel">
+    <strong>Refill this faucet</strong> — donations of any size extend the
+    runway (every 0.005 XNO = one more agent onboarded):<br>
+    <span class="mono">nano_1hk1cu3773u5r39e75mtqrauzro75j3hwdzyewz8izokzur66semy739w14h</span>
+  </div>
+</main>
