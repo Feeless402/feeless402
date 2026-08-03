@@ -46,7 +46,7 @@
   <header>
 <meta charset="utf-8">
     <div class="brand"><a href="/"><b>feeless402</b></a> / docs</div>
-    <nav><a href="/">Home</a><a href="/docs.html">Docs</a><a href="/faucet.html">Faucet</a><a href="https://railhint.com">Spec</a><a href="/llms.txt">llms.txt</a></nav>
+    <nav><a href="/">Home</a><a href="/docs.html">Docs</a><a href="/faucet.html">Faucet</a><a href="/stats">Stats</a><a href="https://railhint.com" target="_blank" rel="noopener">Spec</a><a href="/llms.txt">llms.txt</a></nav>
   </header>
 
   <h1>Documentation</h1>
@@ -94,7 +94,7 @@ claude mcp add feeless402 -- nano-pay mcp</code></pre>
   <pre><code>pip install "feeless402[server]"
 nano-pay serve --port 8402</code></pre>
   <p>Every unpaid request gets a standards-compliant 402 with your price in
-  <code>accepts</code> and a <a href="https://railhint.com">railHint</a>
+  <code>accepts</code> and a <a href="https://railhint.com" target="_blank" rel="noopener">railHint</a>
   block that teaches visiting agents how to onboard — docs, bootstrap
   command, faucet list. Incoming payments are verified against the live
   ledger (payer frontier, exact amount, destination, signature, replay
@@ -143,7 +143,9 @@ nano-pay serve --port 8402</code></pre>
 
   <h2>Source & spec</h2>
   <p>Code: <a href="https://github.com/feeless402/feeless402" target="_blank" rel="noopener">github.com/feeless402/feeless402</a> (MIT)<br>
-  railHint extension spec: <a href="https://railhint.com">railhint.com</a><br>
-  x402 standard: <a href="https://x402.org" target="_blank" rel="noopener">x402.org</a> (Linux Foundation)<br>
+  railHint extension spec: <a href="https://railhint.com" target="_blank" rel="noopener">railhint.com</a><br>
+  x402 standard: <a href="https://x402.org" target="_blank" rel="noopener">x402.org</a> — stewarded by the
+  Linux Foundation&rsquo;s x402 Foundation; premier members include Coinbase (original developer), Cloudflare,
+  Stripe, Google, AWS, Circle, Visa, and Mastercard<br>
   Engine: <a href="https://nano.org" target="_blank" rel="noopener">Nano (XNO)</a></p>
 </main>

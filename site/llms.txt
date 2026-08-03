@@ -19,3 +19,4 @@ nano-pay topup 5 --asset USDC-BASE --execute
 
 Docs: https://github.com/feeless402/feeless402
 Spec: x402 exact scheme, nano:mainnet
+x402 is stewarded by the Linux Foundation's x402 Foundation (premier members incl. Coinbase, Cloudflare, Stripe, Google, AWS, Circle, Visa, Mastercard)

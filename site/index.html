@@ -56,6 +56,9 @@
   h2 { font-size: 1.45rem; margin: 0 0 .9rem; }
   p { margin: 0 0 1.1rem; }
   .soft { color: var(--ink-soft); }
+  .pull { margin: 2.8rem 0; padding: .1rem 0 .1rem 1.3rem; border-left: 3px solid var(--accent); font-size: 1.3rem; line-height: 1.45; text-wrap: balance; }
+  .pull em { color: var(--accent-ink); font-style: italic; }
+  .pull b { white-space: nowrap; }
   a { color: var(--accent-ink); text-underline-offset: 3px; }
   code, pre { font-family: var(--mono); }
   code { font-size: .86em; background: color-mix(in srgb, var(--accent) 9%, transparent); padding: .1em .35em; border-radius: 4px; }
@@ -129,31 +132,38 @@
       <div class="brand-sub">the feeless rail for the agent economy</div>
     </div>
     <nav style="font-family:var(--mono);font-size:.78rem;display:flex;gap:1.1rem">
-      <a href="/docs.html">Docs</a><a href="/faucet.html">Faucet</a><a href="https://railhint.com">Spec</a><a href="/llms.txt">llms.txt</a>
+      <a href="/docs.html">Docs</a><a href="/faucet.html">Faucet</a><a href="/stats">Stats</a><a href="https://railhint.com" target="_blank" rel="noopener">Spec</a><a href="/llms.txt">llms.txt</a>
     </nav>
   </header>
 
   <section class="hero">
-    <div class="term" role="img" aria-label="An HTTP exchange: a 402 Payment Required response with a railHint extension, followed by a paid retry that returns 200 OK">
-      <span class="term-line dim">$ curl https://api.example.com/premium</span>
+    <p class="eyebrow">Feeless x402 for AI agents</p>
+    <h1>The cheaper way for AI agents to pay.</h1>
+
+    <div class="term" role="img" style="font-size:.74rem;line-height:1.75;margin:1.5rem 0 1.7rem" aria-label="A payment handshake: a server answers a payment request by offering a cheaper Nano option via railHint, then the agent pays in Nano instantly with no fees">
+      <span class="term-line dim">$ GET /premium                         <span class="dim"># an agent asks to buy one API call</span></span>
       <span class="term-line s402">HTTP/1.1 402 Payment Required</span>
-      <span class="term-line">{ <span class="key">"accepts"</span>: [ { "network": "nano:mainnet", "amount": "0.0001 XNO" } ],</span>
-      <span class="term-line">  <span class="key">"railHint"</span>: {</span>
-      <span class="term-line">    "why": "zero fees, no price floor, settles &lt; 1s",</span>
-      <span class="term-line">    "bootstrap": "pip install nano-pay && nano-pay init",</span>
-      <span class="term-line">    "faucets": ["https://feeless402.com/faucet"]</span>
-      <span class="term-line">  } }</span>
+      <span class="term-line" style="color:var(--term-ink)"># "Happy to take your payment — but here's a cheaper way</span>
+      <span class="term-line" style="color:var(--term-ink)">#  we can transact in right now, instantly:"</span>
+      <span class="term-line">   accepts    <span class="dim">USDC on Base</span>   ~$0.001       <span class="dim"># network fees + a price floor</span></span>
+      <span class="term-line"><span class="key">   railHint</span>   Nano (XNO)     <span class="s200">$0.0000027</span>    <span class="dim"># ~370× cheaper · 0 fees · &lt; 1s</span></span>
+      <span class="term-line dim">              new here? the faucet funds your first Nano, free</span>
       <span class="term-line dim"></span>
-      <span class="term-line dim">$ nano-pay pay https://api.example.com/premium</span>
-      <span class="term-line s200">HTTP/1.1 200 OK   <span class="dim"># paid 0.0001 XNO · confirmed on-ledger in &lt; 1s</span></span>
-      <span class="term-line">{ "premium": true, "paid_xno": "0.0001" }</span>
-      <span class="term-line dim"># fees paid by either side: 0</span>
+      <span class="term-line s200">→ agent pays in Nano · 200 OK          <span class="dim"># confirmed on-ledger &lt; 1s · fees: 0</span></span>
     </div>
-    <h1>402 Payment Required isn’t an error. It’s an invitation.</h1>
-    <p class="lede">Feeless402 turns the x402 payment handshake into a self-onboarding
-    rail for AI agents: every payment request carries the price, the reason it’s
-    cheap, and the exact commands a machine needs to join — including a faucet
-    for its first tank. No accounts. No gas tokens. No fees. Ever.</p>
+
+    <p class="lede"><b>Feeless402</b> plugs Nano into <b>x402</b> — the new open payment
+    standard for AI agents, now run by the <b>Linux Foundation</b> and backed by
+    Coinbase, Cloudflare, Stripe, Google, AWS, Circle, Visa, and Mastercard.</p>
+    <p>Most x402 payments are quoted in expensive, fee-based crypto. Feeless402’s
+    twist: the instant an agent is asked to pay, it offers a cheaper way —
+    <em>“want to use Nano instead?”</em> — and even hands the agent its first Nano
+    for free through a built-in faucet. It switches over in seconds and starts
+    saving immediately, because Nano is feeless and settles in under a second.</p>
+
+    <blockquote class="pull">Nano becomes the low-cost option <em>inside</em> the
+    standard the whole industry is adopting — chosen by the agent, in the moment.
+    <b>No accounts.</b> <b>No gas tokens.</b> <b>No fees.</b></blockquote>
   </section>
 
   <hr class="rail" />
@@ -248,7 +258,9 @@ nano-pay topup 5 --asset USDC-BASE --execute</pre></li>
     <div>Engine: <a href="https://nano.org" target="_blank" rel="noopener">Nano (XNO)</a> — a currency with zero
     network fees and sub-second finality, distributed by faucet since 2015.</div>
     <div>Protocol: <a href="https://x402.org" target="_blank" rel="noopener">x402</a>, an open standard under the
-    Linux Foundation. Feeless402 is an independent community project.</div>
+    Linux Foundation. Premier members of the x402 Foundation include Coinbase (the protocol’s original
+    developer), Cloudflare, Stripe, Google, AWS, Circle, Visa, and Mastercard. Feeless402 is an independent
+    community project, not affiliated with or endorsed by the foundation or its members.</div>
     <div>Code: MIT. Wallets are self-custodied; this site never holds your funds.</div>
   </footer>
 </main>
