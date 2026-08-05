@@ -18,14 +18,60 @@ import urllib.request
 REPO = "Feeless402/feeless402"
 OUT = "/var/www/feeless402/community-stats.json"
 STATE = "/root/nano-pay/logs/visitor_state.json"
-LOGS = ["/var/log/nginx/access.log", "/var/log/nginx/access.log.1"]
+# Per-vhost logs since Aug 5 2026 (server-level access_log overrides the
+# global one, so the shared access.log no longer sees feeless402 traffic).
+# The shared logs stay listed until their pre-split history rotates out.
+LOGS = ["/var/log/nginx/feeless402.access.log",
+        "/var/log/nginx/feeless402.access.log.1"]
+# Pre-split history: the shared log held EVERY vhost (and the catch-all
+# default server), so counting its IPs unfiltered inflated visitors ~7x.
+# Only requests to feeless402-specific paths count from these.
+SHARED_LOGS = ["/var/log/nginx/access.log", "/var/log/nginx/access.log.1"]
+# Human-facing surface only. Agent endpoints (/llms.txt, /premium, /faucet,
+# /mcp, /.well-known/*) are deliberately excluded: bare /llms.txt probes hit
+# every domain on the box, and agent traffic is counted elsewhere as claims
+# and paid calls, not as site visitors. /demo/gas fires on homepage load,
+# which is how a plain "/" visit is attributed to feeless402 in shared logs.
+F402_PATH = re.compile(
+    r"^/(?:demo/(?:gas|compare|run|article)|faucet\.html|docs\.html"
+    r"|stats|stats\.json|community-stats\.json|eli5\.png)(?:[/?]|$)")
+# Visitor attribution only became reliable on Aug 4, when the homepage
+# started fetching /demo/gas on load. Before that, feeless402 visitors who
+# stayed on "/" are indistinguishable from other vhosts in the shared log,
+# so those days would publish a floor (1-3) that reads as "nobody came"
+# when reddit was actually driving traffic. Better no bar than a wrong one.
+LAUNCH_DAY = "2026-08-04"
 KEEP_DAYS = 21
 SHOW_DAYS = 14
 
 BOT_PATH = re.compile(r"\.php|/wp-|xmlrpc|\.env|\.git|/vendor/|/media/|\.asp|\.cgi")
 BOT_UA = re.compile(
     r"bot|crawl|spider|slurp|scan|censys|shodan|masscan|zgrab|nuclei|sqlmap"
-    r"|nmap|go-http-client|^curl|^wget|wp-admin", re.I)
+    r"|nmap|go-http-client|^curl|^wget|wp-admin|catalog|checker|evidence"
+    r"|arrivals|monitor|probe|fetch|http-client|python-requests|okhttp"
+    r"|headless|java/|libwww|axios|node-fetch", re.I)
+# Allowlist beats denylist: a visitor must look like a real browser, and
+# unmaintained-version UAs are the tell for cheap spoofers.
+BROWSERISH = re.compile(r"Mozilla/5\.0.*(Chrome|Firefox|Safari|Edg)/", re.I)
+_CHROME_V = re.compile(r"Chrome/(\d+)")
+_FF_V = re.compile(r"Firefox/(\d+)")
+_IOS_V = re.compile(r"(?:iPhone|CPU) OS (\d+)")
+
+
+def is_human_ua(ua):
+    """Heuristic: browser-shaped UA at a plausibly current version."""
+    if BOT_UA.search(ua) or not BROWSERISH.search(ua):
+        return False
+    m = _CHROME_V.search(ua)
+    if m and int(m.group(1)) < 110:   # Chrome 110 = early 2023
+        return False
+    m = _FF_V.search(ua)
+    if m and int(m.group(1)) < 110:
+        return False
+    m = _IOS_V.search(ua)
+    if m and int(m.group(1)) < 13:
+        return False
+    return True
 
 
 def _self_ips():
@@ -99,18 +145,23 @@ def visitors():
     state = load_json(STATE)  # {date: [ip, ...]}
     days = {d: {ip for ip in ips if ip not in SELF_IPS}
             for d, ips in state.items()}
-    for path in LOGS:
+    for path in LOGS + SHARED_LOGS:
         if not os.path.exists(path):
             continue
+        shared = path in SHARED_LOGS
         with open(path, errors="replace") as f:
             for line in f:
                 m = LINE.match(line)
                 if not m:
                     continue
                 ip, dd, mon, yyyy, url, ua = m.groups()
-                if ip in SELF_IPS or BOT_PATH.search(url) or BOT_UA.search(ua):
+                if ip in SELF_IPS or BOT_PATH.search(url) or not is_human_ua(ua):
                     continue
+                if shared and not F402_PATH.match(url):
+                    continue  # another vhost's traffic in the pre-split log
                 date = f"{yyyy}-{MON[mon]:02d}-{dd}"
+                if date < LAUNCH_DAY:
+                    continue
                 days.setdefault(date, set()).add(ip)
     cutoff = time.strftime("%Y-%m-%d", time.gmtime(time.time() - KEEP_DAYS * 86400))
     days = {d: ips for d, ips in days.items() if d >= cutoff}
