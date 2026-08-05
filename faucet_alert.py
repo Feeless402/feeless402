@@ -74,6 +74,41 @@ def _external_addrs(led) -> set:
             if any(abs(at - t) < 2 for t in ext_times)}
 
 
+# Warn while there's still time to refill, not when an agent hits a 503.
+# Crossed downward once each; re-arms if the faucet is topped back up.
+LOW_MARKS = [500, 100, 0]
+
+
+def check_refill_needed(st) -> None:
+    """Ping if the faucet's remaining claims crossed a low-water mark."""
+    try:
+        r = requests.get("http://127.0.0.1:8402/stats.json", timeout=6)
+        f = r.json()["faucet"]
+        left, bal = f.get("claims_remaining"), f.get("balance_xno")
+    except Exception:
+        return                      # RPC/service hiccup — never cry wolf
+    if left is None or bal is None:
+        return
+    crossed = [m for m in LOW_MARKS if left <= m]
+    mark = min(crossed) if crossed else None   # lowest mark, so it escalates
+    if mark is None:
+        st["low_mark"] = None       # healthy again after a top-up
+        return
+    if st.get("low_mark") == mark:
+        return                      # already warned at this level
+    st["low_mark"] = mark
+    if mark == 0:
+        tg("🏜️ <b>Feeless402 faucet is DRY</b>\n"
+           "Claims are failing with 503 right now — agents that arrive will "
+           "bounce.\nRefill: <code>nano-pay send &lt;faucet-addr&gt;</code> "
+           "(address is in the 503 body and on /stats)")
+    else:
+        tg(f"🚰 <b>Feeless402 faucet running low</b>\n"
+           f"About <b>{left}</b> claims left ({bal} XNO).\n"
+           "Worth topping up before it empties — a dry faucet turns arriving "
+           "agents away silently.")
+
+
 def main() -> None:
     led = load(LEDGER, {"addresses": {}, "ips": {}})
     addrs = set(led.get("addresses", {}))
@@ -112,8 +147,9 @@ def main() -> None:
             "See it live: https://feeless402.com/stats"
         )
 
-    STATE.write_text(json.dumps(
-        {"seen_addr": sorted(addrs), "seen_ext_addr": sorted(ext_addrs)}))
+    check_refill_needed(st)
+    st.update({"seen_addr": sorted(addrs), "seen_ext_addr": sorted(ext_addrs)})
+    STATE.write_text(json.dumps(st))
 
 
 if __name__ == "__main__":
