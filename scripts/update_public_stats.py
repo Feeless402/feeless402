@@ -23,7 +23,22 @@ KEEP_DAYS = 21
 SHOW_DAYS = 14
 
 BOT_PATH = re.compile(r"\.php|/wp-|xmlrpc|\.env|\.git|/vendor/|/media/|\.asp|\.cgi")
-BOT_UA = re.compile(r"bot|crawl|spider|slurp|scan|censys|shodan", re.I)
+BOT_UA = re.compile(
+    r"bot|crawl|spider|slurp|scan|censys|shodan|masscan|zgrab|nuclei|sqlmap"
+    r"|nmap|go-http-client|^curl|^wget|wp-admin", re.I)
+
+
+def _self_ips():
+    """Operator self-traffic (server, home) — one IP per line, outside repo."""
+    try:
+        with open(os.path.expanduser("~/.nano-pay/self-ips.txt")) as f:
+            return {l.strip() for l in f
+                    if l.strip() and not l.startswith("#")}
+    except OSError:
+        return set()
+
+
+SELF_IPS = _self_ips() | {"127.0.0.1", "::1"}
 LINE = re.compile(r'^(\S+) \S+ \S+ \[(\d{2})/([A-Za-z]{3})/(\d{4}):[^\]]*\] "(?:GET|POST|HEAD) ([^ "]+)[^"]*" \d{3} \S+ "[^"]*" "([^"]*)"')
 MON = {m: i + 1 for i, m in enumerate(
     ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"])}
@@ -82,7 +97,8 @@ def github_stats():
 
 def visitors():
     state = load_json(STATE)  # {date: [ip, ...]}
-    days = {d: set(ips) for d, ips in state.items()}
+    days = {d: {ip for ip in ips if ip not in SELF_IPS}
+            for d, ips in state.items()}
     for path in LOGS:
         if not os.path.exists(path):
             continue
@@ -92,7 +108,7 @@ def visitors():
                 if not m:
                     continue
                 ip, dd, mon, yyyy, url, ua = m.groups()
-                if BOT_PATH.search(url) or BOT_UA.search(ua):
+                if ip in SELF_IPS or BOT_PATH.search(url) or BOT_UA.search(ua):
                     continue
                 date = f"{yyyy}-{MON[mon]:02d}-{dd}"
                 days.setdefault(date, set()).add(ip)

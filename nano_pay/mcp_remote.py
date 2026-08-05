@@ -42,8 +42,13 @@ mcp = MCPServer(
 )
 
 
-def _guard(url: str) -> None:
-    """Refuse URLs that aren't public http(s) — this server fetches them."""
+def _guard(url: str) -> str:
+    """Refuse URLs that aren't public http(s); return one validated IP.
+
+    The caller must connect to the RETURNED IP, not re-resolve the
+    hostname — a second lookup could be DNS-rebound to an internal
+    address after this check passes (TOCTOU/SSRF).
+    """
     p = urlparse(url)
     if p.scheme not in ("http", "https"):
         raise ValueError("only http(s) URLs are allowed")
@@ -52,19 +57,50 @@ def _guard(url: str) -> None:
         infos = socket.getaddrinfo(host, p.port or (443 if p.scheme == "https" else 80))
     except socket.gaierror:
         raise ValueError(f"cannot resolve host: {host}")
+    ips = []
     for info in infos:
         ip = ipaddress.ip_address(info[4][0])
         if not ip.is_global:
             raise ValueError("URL resolves to a non-public address")
+        ips.append(ip)
+    if not ips:
+        raise ValueError(f"cannot resolve host: {host}")
+    ips.sort(key=lambda i: i.version)  # prefer IPv4
+    return str(ips[0])
+
+
+class _PinnedAdapter(requests.adapters.HTTPAdapter):
+    """Connect to a pre-resolved IP while TLS still does SNI + cert
+    verification against the original hostname."""
+
+    def __init__(self, hostname: str):
+        self._hostname = hostname
+        super().__init__()
+
+    def init_poolmanager(self, *args, **kwargs):
+        kwargs["server_hostname"] = self._hostname
+        kwargs["assert_hostname"] = self._hostname
+        return super().init_poolmanager(*args, **kwargs)
 
 
 def _fetch_402(url: str, method: str, json_body: str):
-    _guard(url)
+    ip = _guard(url)
+    p = urlparse(url)
+    host = p.hostname or ""
+    netloc = f"[{ip}]" if ":" in ip else ip
+    host_hdr = host
+    if p.port:
+        netloc += f":{p.port}"
+        host_hdr += f":{p.port}"
+    pinned_url = p._replace(netloc=netloc).geturl()
     kwargs = {"json": json.loads(json_body)} if json_body else {}
     if json_body and method == "GET":
         method = "POST"
-    return requests.request(
-        method, url, headers={"x-x402": "true"},
+    s = requests.Session()
+    if p.scheme == "https":
+        s.mount("https://", _PinnedAdapter(host))
+    return s.request(
+        method, pinned_url, headers={"x-x402": "true", "Host": host_hdr},
         timeout=30, allow_redirects=False, **kwargs,
     )
 

@@ -10,14 +10,15 @@ to onboard (see SPEC-railhint.md). Site: site/index.html + site/llms.txt.
 
 **The pitch, in one number:** the same $5 buys 5,000 API calls paid as
 per-call USDC-on-Base x402 payments (merchants floor prices at 0.001 USDC),
-or ~1.8 million calls paid in Nano at the true metered price
-($0.0000027/call observed live at nano-gpt.com). Top up once, micropay
-forever.
+or hundreds of thousands of calls paid in Nano at true metered prices
+($0.0000096/call observed live at nano-gpt.com, confirmed on-ledger).
+Top up once, micropay forever.
 
 ## Install
 
 ```bash
-pip install -e .          # needs Python 3.10+; pulls nanopy + requests
+pip install feeless402    # needs Python 3.10+; pulls nanopy + requests
+# (from a checkout: pip install -e .)
 nano-pay init             # creates ~/.nano-pay/wallet.json (chmod 600)
 ```
 
@@ -66,7 +67,7 @@ but don't fire concurrent payments from one wallet).
 
 ## Status
 
-Beta (v0.2.0). Proven on mainnet with real funds: live paid calls to
+Beta (v0.2.1). Proven on mainnet with real funds: live paid calls to
 NanoGPT ($0.0000096/call, confirmed on-ledger), full merchant loop
 (verify → settle → confirm, no facilitator), PoW-gated faucet claims,
 and a complete stranger-agent lifecycle (fresh wallet → PoW claim →

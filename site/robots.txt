@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+# For AI agents: https://feeless402.com/llms.txt

@@ -13,13 +13,16 @@ Env:  F402_SITE_URL, F402_DOCS_URL, F402_PRICE_XNO, F402_FAUCET_XNO,
 import base64
 import json
 import os
+import threading
 import time
 from pathlib import Path
+
+import anyio
 
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 
-from . import raw_to_xno, xno_to_raw
+from . import __version__, raw_to_xno, xno_to_raw
 from .rpc import RPC
 from .verify import PaymentInvalid, settle_block, verify_block
 from .wallet import DEFAULT_DIR, Wallet
@@ -57,6 +60,10 @@ demo_wallet = _wallet("demo")  # pays the homepage live demo; auto-refilled from
 
 FAUCET_LEDGER = DEFAULT_DIR / "faucet-ledger.json"
 
+# The faucet wallet is spent from the faucet endpoint AND the demo-refill
+# threads; concurrent sends would fork on the same frontier.
+FAUCET_LOCK = threading.Lock()
+
 
 def _ledger():
     if FAUCET_LEDGER.exists():
@@ -65,7 +72,40 @@ def _ledger():
 
 
 def _save_ledger(led):
-    FAUCET_LEDGER.write_text(json.dumps(led, indent=2))
+    tmp = FAUCET_LEDGER.with_name(FAUCET_LEDGER.name + ".tmp")
+    tmp.write_text(json.dumps(led, indent=2))
+    os.replace(tmp, FAUCET_LEDGER)
+
+
+def _self_ips() -> set:
+    """Operator self-traffic IPs — loopback plus ~/.nano-pay/self-ips.txt."""
+    ips = {"127.0.0.1", "::1", "localhost", "unknown", ""}
+    try:
+        ips |= {l.strip() for l in
+                (DEFAULT_DIR / "self-ips.txt").read_text().splitlines()
+                if l.strip() and not l.startswith("#")}
+    except Exception:
+        pass
+    return ips
+
+
+def _external_claim_times(led) -> list:
+    """Claim timestamps attributable to non-operator IPs (matched ±2s)."""
+    self_ips = _self_ips()
+    ext = [t for ip, ts in led.get("ips", {}).items()
+           if ip not in self_ips for t in ts]
+    return sorted(at for at in (float(t) for t in
+                                led.get("addresses", {}).values())
+                  if any(abs(at - t) < 2 for t in ext))
+
+
+_BLOCK_KEYS = {"type", "account", "previous", "representative",
+               "balance", "link", "signature"}
+
+
+def _block_shape_ok(block) -> bool:
+    """Cheap structural check so malformed blocks never reach the RPC."""
+    return isinstance(block, dict) and _BLOCK_KEYS <= set(block)
 
 
 def _client_ip(request) -> str:
@@ -192,12 +232,15 @@ def _stats_data():
         except Exception:
             return None
 
-    faucet_bal = _bal(faucet_wallet)
+    faucet_bal = _cached("faucet_bal", 300, lambda: _bal(faucet_wallet))
     per_claim = float(FAUCET_XNO)
+    ext_times = _external_claim_times(led)
     return {
         "faucet": {
-            "claims_total": len(claims),
-            "claims_24h": sum(1 for t in ts_list if t > day_ago),
+            # headline counts exclude the operator's own test claims
+            "claims_total": len(ext_times),
+            "claims_24h": sum(1 for t in ext_times if t > day_ago),
+            "self_test_claims": len(claims) - len(ext_times),
             "xno_dispensed": round(len(claims) * per_claim, 6),
             "xno_per_claim": per_claim,
             "balance_xno": faucet_bal,
@@ -207,7 +250,8 @@ def _stats_data():
             "last_claim_unix": ts_list[-1] if ts_list else None,
             "recent_unix": ts_list[-60:],
         },
-        "treasury": {"balance_xno": _bal(server_wallet),
+        "treasury": {"balance_xno": _cached(
+                         "treasury_bal", 300, lambda: _bal(server_wallet)),
                      "receivable_xno": _cached(
                          "treasury_recv", 300,
                          lambda: round(float(raw_to_xno(sum(
@@ -291,7 +335,7 @@ STATS_HTML = """<title>Stats — Feeless402</title>
 
   <h2>Faucet &mdash; agents funded</h2>
   <div class="grid">
-    <div class="tile"><div class="num" id="f_total">&ndash;</div><div class="lbl">agents funded (all time)</div></div>
+    <div class="tile"><div class="num" id="f_total">&ndash;</div><div class="lbl">agents funded (all time, excl. our own tests)</div></div>
     <div class="tile"><div class="num" id="f_24h">&ndash;</div><div class="lbl">claims, last 24h</div></div>
     <div class="tile"><div class="num" id="f_disp">&ndash;</div><div class="lbl">XNO dispensed</div></div>
     <div class="tile"><div class="num" id="f_rem">&ndash;</div><div class="lbl">claims left in faucet</div></div>
@@ -301,7 +345,7 @@ STATS_HTML = """<title>Stats — Feeless402</title>
   <div class="grid">
     <div class="tile"><div class="num" id="d_pypi">&ndash;</div><div class="lbl">PyPI downloads (30d)</div></div>
     <div class="tile"><div class="num" id="d_pypi_d">&ndash;</div><div class="lbl">PyPI (last day)</div></div>
-    <div class="tile"><div class="num" id="d_claw">&ndash;</div><div class="lbl">ClawHub installs</div></div>
+    <div class="tile"><div class="num" id="d_claw">&ndash;</div><div class="lbl">ClawHub downloads</div></div>
     <div class="tile"><div class="num" id="d_gh">&ndash;</div><div class="lbl">GitHub stars</div></div>
   </div>
 
@@ -342,8 +386,8 @@ async function load(){
   n2('f_rem',f.claims_remaining);
   const p=d.pypi||{},c=d.clawhub||{},g=d.github||{};
   n2('d_pypi',p.last_month);n2('d_pypi_d',p.last_day);
-  n2('d_claw',c.installs_60d!=null?c.installs_60d:c.downloads);n2('d_gh',g.stars);
-  document.getElementById('t_bal').textContent=xno((t.balance_xno||0)+(t.receivable_xno||0));
+  n2('d_claw',c.downloads!=null?c.downloads:c.installs_60d);n2('d_gh',g.stars);
+  document.getElementById('t_bal').textContent=(t.balance_xno==null&&t.receivable_xno==null)?'–':xno((t.balance_xno||0)+(t.receivable_xno||0));
   document.getElementById('t_price').textContent=xno(t.price_per_call_xno);
   const gen=new Date((s.generated_unix||Date.now()/1000)*1000);
   document.getElementById('ts').textContent='updated '+gen.toLocaleTimeString();
@@ -371,7 +415,7 @@ loadCommunity();setInterval(loadCommunity,300000);
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="Feeless402", version="0.1.0")
+    app = FastAPI(title="Feeless402", version=__version__)
     price_raw = xno_to_raw(PRICE_XNO)
 
     @app.get("/")
@@ -416,7 +460,7 @@ def create_app() -> FastAPI:
             f"nano-pay claim {SITE_URL}   # free starter XNO from the faucet\n\n"
             "## Top up for real work\n"
             "nano-pay topup 5 --asset USDC-BASE --execute\n"
-            "# $5 of USDC ≈ 1.8 million micro-calls at true metered prices\n\n"
+            "# $5 of USDC ≈ 100,000+ micro-calls at this endpoint's price\n\n"
             f"Docs: {DOCS_URL}\nSpec: x402 exact scheme, nano:mainnet\n"
             "x402 is stewarded by the Linux Foundation's x402 Foundation "
             "(premier members incl. Coinbase, Cloudflare, Stripe, Google, "
@@ -441,6 +485,11 @@ def create_app() -> FastAPI:
                         ).decode()
                     },
                 )
+            if not _block_shape_ok(block):
+                return JSONResponse(
+                    {"error": "payment invalid: malformed block"},
+                    status_code=402,
+                )
             payer = verify_block(
                 block, price_raw, server_wallet.address, rpc
             )
@@ -448,6 +497,11 @@ def create_app() -> FastAPI:
         except PaymentInvalid as e:
             return JSONResponse(
                 {"error": f"payment invalid: {e}"}, status_code=402
+            )
+        except (KeyError, ValueError, TypeError):
+            return JSONResponse(
+                {"error": "payment invalid: malformed block"},
+                status_code=402,
             )
         return JSONResponse(
             {
@@ -504,8 +558,9 @@ def create_app() -> FastAPI:
             try:
                 demo_wallet.receive_all(rpc, prework=False)
                 if demo_wallet.synced_account(rpc).raw_bal < 20 * price_raw:
-                    faucet_wallet.send(
-                        rpc, demo_wallet.address, 200 * price_raw)
+                    with FAUCET_LOCK:
+                        faucet_wallet.send(
+                            rpc, demo_wallet.address, 200 * price_raw)
                     demo_wallet.receive_all(rpc, prework=False)
                 acct = demo_wallet.synced_account(rpc)
                 demo_wallet.prework(demo_wallet._work_root(acct), rpc)
@@ -528,11 +583,21 @@ def create_app() -> FastAPI:
                     headers={"PAYMENT-REQUIRED": base64.b64encode(
                         json.dumps(body).encode()).decode()},
                 )
+            if not _block_shape_ok(block):
+                return JSONResponse(
+                    {"error": "payment invalid: malformed block"},
+                    status_code=402,
+                )
             verify_block(block, price_raw, server_wallet.address, rpc)
             receipt = settle_block(block, rpc)
         except PaymentInvalid as e:
             return JSONResponse(
                 {"error": f"payment invalid: {e}"}, status_code=402
+            )
+        except (KeyError, ValueError, TypeError):
+            return JSONResponse(
+                {"error": "payment invalid: malformed block"},
+                status_code=402,
             )
         return JSONResponse(
             {"article": DEMO_ARTICLE, "paid_xno": raw_to_xno(price_raw),
@@ -551,6 +616,8 @@ def create_app() -> FastAPI:
                 {"error": "one unlock per 15 seconds per visitor — easy"},
                 status_code=429)
         _demo_hits["window"] = [t for t in _demo_hits["window"] if now - t < 60]
+        _demo_hits["ips"] = {k: v for k, v in _demo_hits["ips"].items()
+                             if now - v < 60}
         if len(_demo_hits["window"]) >= 12:
             return JSONResponse(
                 {"error": "demo is busy — try again in a minute"},
@@ -613,8 +680,9 @@ def create_app() -> FastAPI:
                     demo_wallet.receive_all(rpc, prework=False)
                     if demo_wallet.synced_account(
                             rpc).raw_bal < 20 * price_raw:
-                        faucet_wallet.send(
-                            rpc, demo_wallet.address, 200 * price_raw)
+                        with FAUCET_LOCK:
+                            faucet_wallet.send(
+                                rpc, demo_wallet.address, 200 * price_raw)
                         demo_wallet.receive_all(rpc, prework=False)
                     acct = demo_wallet.synced_account(rpc)
                     demo_wallet.prework(demo_wallet._work_root(acct), rpc)
@@ -766,6 +834,16 @@ def create_app() -> FastAPI:
             "how": "work_generate(root, difficulty) locally; POST it as 'work'",
         }
 
+    @app.get("/faucet")
+    def faucet_info():
+        """A human clicking a pasted /faucet link gets a signpost, not a 405."""
+        return {
+            "how": "POST JSON {\"address\": \"nano_...\", \"work\": \"...\"} "
+                   "— GET /faucet/challenge first for the PoW root",
+            "humans": f"{SITE_URL}/faucet.html",
+            "xno_per_claim": FAUCET_XNO,
+        }
+
     @app.post("/faucet")
     async def faucet(request: Request):
         try:
@@ -813,26 +891,50 @@ def create_app() -> FastAPI:
             return JSONResponse({"error": "IP daily limit reached"}, status_code=429)
 
         amount = xno_to_raw(FAUCET_XNO)
+
+        def _locked_claim():
+            # Blocking RPC work runs in a worker thread (not on the event
+            # loop) under FAUCET_LOCK so faucet sends can't fork against
+            # the demo-refill threads; ledger is re-checked inside the
+            # lock so concurrent same-address claims can't double-spend.
+            with FAUCET_LOCK:
+                led2 = _ledger()
+                if address in led2["addresses"]:
+                    return None
+                faucet_wallet.load()
+                # pocket any pending refills first
+                faucet_wallet.receive_all(rpc, prework=False)
+                h = faucet_wallet.send(rpc, address, amount)
+                led2["addresses"][address] = time.time()
+                led2["ips"].setdefault(ip, []).append(time.time())
+                _save_ledger(led2)
+                return h
+
         try:
-            faucet_wallet.load()
-            # pocket any pending refills first
-            faucet_wallet.receive_all(rpc, prework=False)
-            h = faucet_wallet.send(rpc, address, amount)
+            h = await anyio.to_thread.run_sync(_locked_claim)
         except Exception as e:
             return JSONResponse(
                 {"error": f"faucet dry or failed: {e}",
                  "refill_address": faucet_wallet.address},
                 status_code=503,
             )
-        led["addresses"][address] = time.time()
-        led["ips"].setdefault(ip, recent).append(time.time())
-        _save_ledger(led)
+        if h is None:
+            return JSONResponse(
+                {"error": "address already claimed its starter XNO"},
+                status_code=429,
+            )
         return {
             "sent_xno": FAUCET_XNO,
             "to": address,
             "hash": h,
             "next": "run `nano-pay receive`, then retry the paid endpoint",
         }
+
+    # Answer HEAD wherever GET is served — probes and link checkers use it
+    for route in app.routes:
+        methods = getattr(route, "methods", None)
+        if methods and "GET" in methods:
+            methods.add("HEAD")
 
     return app
 
