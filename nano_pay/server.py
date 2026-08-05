@@ -53,6 +53,7 @@ def _wallet(name: str) -> Wallet:
 
 server_wallet = _wallet("server")
 faucet_wallet = _wallet("faucet")
+demo_wallet = _wallet("demo")  # pays the homepage live demo; auto-refilled from the faucet wallet
 
 FAUCET_LEDGER = DEFAULT_DIR / "faucet-ledger.json"
 
@@ -85,7 +86,8 @@ def rail_hint(price_raw: int) -> dict:
         ),
         "topup": (
             "nano-pay topup 5 --asset USDC-BASE --execute  "
-            "# $5 ≈ 1.8M micro-calls; any instant-swap service works"
+            "# $5 buys hundreds of thousands of micro-calls; "
+            "any instant-swap service works"
         ),
         "faucets": FAUCET_FEDERATION,
         "spec": "x402 exact scheme on nano:mainnet — see x402nano.org",
@@ -115,24 +117,36 @@ def payment_required_body(price_raw: int, pay_to: str, resource: str) -> dict:
 _STATS_CACHE = {}
 
 
-def _cached(key, ttl, fn):
+def _cached(key, ttl, fn, fail_ttl=300):
+    """Cache fn() for ttl seconds; on failure keep the last good value but
+    retry after fail_ttl instead of a full ttl (one transient upstream 429
+    after the daily reboot used to blank a stat for six hours)."""
     now = time.time()
     hit = _STATS_CACHE.get(key)
-    if hit and now - hit[0] < ttl:
+    if hit and now - hit[0] < hit[2]:
         return hit[1]
     try:
         val = fn()
+        _STATS_CACHE[key] = (now, val, ttl)
     except Exception:
         val = hit[1] if hit else None
-    _STATS_CACHE[key] = (now, val)
+        _STATS_CACHE[key] = (now, val, fail_ttl)
     return val
 
 
-def _http_json(url, timeout=6):
+def _http_json(url, timeout=6, retries=1):
+    import urllib.error
     import urllib.request
     req = urllib.request.Request(url, headers={"User-Agent": "feeless402-stats"})
-    with urllib.request.urlopen(req, timeout=timeout) as r:  # noqa: S310
-        return json.loads(r.read())
+    for attempt in range(retries + 1):
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as r:  # noqa: S310
+                return json.loads(r.read())
+        except urllib.error.HTTPError as e:
+            if attempt < retries and e.code in (429, 502, 503):
+                time.sleep(2)
+                continue
+            raise
 
 
 def _pypi_downloads():
@@ -187,6 +201,11 @@ def _stats_data():
             "recent_unix": ts_list[-60:],
         },
         "treasury": {"balance_xno": _bal(server_wallet),
+                     "receivable_xno": _cached(
+                         "treasury_recv", 300,
+                         lambda: round(float(raw_to_xno(sum(
+                             int(a) for a in rpc.receivable(
+                                 server_wallet.address).values()))), 6)),
                      "price_per_call_xno": float(PRICE_XNO)},
         "downloads": {
             "pypi": _cached("pypi", 21600, _pypi_downloads),
@@ -225,13 +244,8 @@ STATS_HTML = """<title>Stats — Feeless402</title>
     --mono: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Menlo, Consolas, monospace;
     --serif: Charter, "Iowan Old Style", "Palatino Linotype", Georgia, serif;
   }
-  @media (prefers-color-scheme: dark) {
-    :root { --paper: #11150f; --panel: #181d16; --ink: #e2e8e0; --ink-soft: #98a396;
-      --line: #2a3328; --accent: #35c07f; --accent-ink: #4fd394; --amber: #d9a032;
-      --term-bg: #0c100c; --term-ink: #cfdcd2; --term-dim: #6f8073; }
-  }
-  :root[data-theme="light"] { --paper:#f3f5f7; --panel:#fff; --ink:#1c2420; --ink-soft:#55605a; --line:#d8dedb; --accent:#0d8a58; --accent-ink:#0a6b45; --amber:#b97d10; --term-bg:#182019; --term-ink:#d7e4da; --term-dim:#7d8f84; }
-  :root[data-theme="dark"] { --paper:#11150f; --panel:#181d16; --ink:#e2e8e0; --ink-soft:#98a396; --line:#2a3328; --accent:#35c07f; --accent-ink:#4fd394; --amber:#d9a032; --term-bg:#0c100c; --term-ink:#cfdcd2; --term-dim:#6f8073; }
+  /* light mode enforced — identical page for every visitor */
+  :root { color-scheme: light only; }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--paper); color: var(--ink); font-family: var(--serif); font-size: 17px; line-height: 1.65; }
   main { max-width: 44rem; margin: 0 auto; padding: 0 1.25rem 5rem; }
@@ -251,6 +265,12 @@ STATS_HTML = """<title>Stats — Feeless402</title>
   .num { font-family: var(--mono); font-size: 1.85rem; font-weight: 700; color: var(--accent-ink); letter-spacing: -.02em; line-height: 1.1; }
   .lbl { font-size: .82rem; color: var(--ink-soft); margin-top: .35rem; }
   .foot { font-family: var(--mono); font-size: .74rem; color: var(--ink-soft); margin-top: 2.2rem; line-height: 1.9; }
+  .days { display: grid; gap: .3rem; margin: .9rem 0 0; font-family: var(--mono); font-size: .78rem; }
+  .drow { display: grid; grid-template-columns: 4.2rem 3.4rem 1fr; align-items: center; gap: .6rem; }
+  .drow .dt { color: var(--ink-soft); }
+  .drow .dv { text-align: right; font-weight: 700; }
+  .dbar { height: 10px; border-radius: 0 4px 4px 0; background: var(--accent); min-width: 2px; }
+  .cap { font-size: .8rem; color: var(--ink-soft); margin: .2rem 0 0; }
 </style>
 <main>
   <header>
@@ -278,6 +298,22 @@ STATS_HTML = """<title>Stats — Feeless402</title>
     <div class="tile"><div class="num" id="d_gh">&ndash;</div><div class="lbl">GitHub stars</div></div>
   </div>
 
+  <h2>pip installs by day</h2>
+  <p class="cap">Real installs via pypistats &mdash; mirror/bot downloads excluded. PyPI publishes each day with about a one-day lag, so today&rsquo;s row appears tomorrow.</p>
+  <div class="days" id="pipdays"><span class="cap">loading&hellip;</span></div>
+
+  <h2>Site visitors by day</h2>
+  <p class="cap">Unique addresses on feeless402.com, common crawler noise filtered. Today&rsquo;s bar is still filling.</p>
+  <div class="days" id="visdays"><span class="cap">loading&hellip;</span></div>
+
+  <h2>Repository &mdash; last 14 days</h2>
+  <div class="grid">
+    <div class="tile"><div class="num" id="g_views">&ndash;</div><div class="lbl">repo views (14d)</div></div>
+    <div class="tile"><div class="num" id="g_vuniq">&ndash;</div><div class="lbl">unique repo visitors</div></div>
+    <div class="tile"><div class="num" id="g_clones">&ndash;</div><div class="lbl">clones (14d)</div></div>
+    <div class="tile"><div class="num" id="g_forks">&ndash;</div><div class="lbl">forks</div></div>
+  </div>
+
   <h2>Settlement</h2>
   <div class="grid">
     <div class="tile"><div class="num" id="t_bal">&ndash;</div><div class="lbl">treasury balance (XNO earned)</div></div>
@@ -300,7 +336,7 @@ async function load(){
   const p=d.pypi||{},c=d.clawhub||{},g=d.github||{};
   n2('d_pypi',p.last_month);n2('d_pypi_d',p.last_day);
   n2('d_claw',c.installs_60d!=null?c.installs_60d:c.downloads);n2('d_gh',g.stars);
-  document.getElementById('t_bal').textContent=xno(t.balance_xno);
+  document.getElementById('t_bal').textContent=xno((t.balance_xno||0)+(t.receivable_xno||0));
   document.getElementById('t_price').textContent=xno(t.price_per_call_xno);
   const gen=new Date((s.generated_unix||Date.now()/1000)*1000);
   document.getElementById('ts').textContent='updated '+gen.toLocaleTimeString();
@@ -309,6 +345,21 @@ async function load(){
  }catch(e){document.getElementById('ts').textContent='stats unavailable';}
 }
 load();setInterval(load,30000);
+async function loadCommunity(){
+ try{
+  const c=await (await fetch('/community-stats.json',{cache:'no-store'})).json();
+  const bars=(id,rows,key)=>{const el=document.getElementById(id);
+   if(!rows||!rows.length){el.innerHTML='<span class="cap">no data yet &mdash; check back</span>';return}
+   const max=Math.max(...rows.map(r=>r[key]||0),1);
+   el.innerHTML=rows.map(r=>'<div class="drow"><span class="dt">'+r.date.slice(5)+'</span><span class="dv">'+n(r[key])+'</span><div class="dbar" style="width:'+Math.max(2,(r[key]||0)/max*100)+'%"></div></div>').join('');};
+  bars('pipdays',c.pypi_daily,'installs');
+  bars('visdays',c.visitors,'uniques');
+  const g=c.github||{};
+  n2('g_views',g.views_14d);n2('g_vuniq',g.views_uniques_14d);
+  n2('g_clones',g.clones_14d);n2('g_forks',g.forks);
+ }catch(e){}
+}
+loadCommunity();setInterval(loadCommunity,300000);
 </script>"""
 
 
@@ -408,6 +459,289 @@ def create_app() -> FastAPI:
                 ).decode()
             },
         )
+
+    # ---------- live paywall demo (the site pays itself, publicly) ----------
+    DEMO_ARTICLE = {
+        "title": "The paywall you just beat cost $0.00004",
+        "body": [
+            "Here is what actually happened when you clicked. Your browser told "
+            "this site's demo agent to go fetch the rest of this article. The "
+            "server answered the way every paid API on the new machine web "
+            "answers: HTTP 402 Payment Required, with a price attached — "
+            "0.0001 XNO, the true metered cost of serving one article.",
+            "The agent didn't sigh, open a subscription page, or type a card "
+            "number. It signed a send block from its own self-custodied Nano "
+            "wallet and retried the request. The server verified the payment "
+            "on the public ledger, settled it, and released the text you are "
+            "reading. Round trip: about a second. Network fees: zero.",
+            "The receipt is not a metaphor. The block hash under this article "
+            "is a real transaction on the Nano ledger — follow it to a public "
+            "explorer and watch your click sit there, confirmed, forever.",
+            "This price is impossible almost everywhere else. Card rails "
+            "charge ~30¢ just to exist, so nobody meters articles. Gas-chain "
+            "rails floor out around $0.001, so micro-content gets bundled "
+            "into subscriptions you forget to cancel. A feeless rail has no "
+            "floor — so a paywall can finally charge what a page is worth: "
+            "almost nothing, an unlimited number of times.",
+            "The standard is x402. The rail is Nano. The code is MIT. Your "
+            "site could do this by lunchtime: pip install feeless402.",
+        ],
+    }
+
+    from threading import Lock, Thread
+    _demo_lock = Lock()
+    _demo_hits = {"ips": {}, "window": []}
+
+    def _demo_warm():  # boot-time: stock the wallet + precompute PoW
+        with _demo_lock:
+            try:
+                demo_wallet.receive_all(rpc, prework=False)
+                if demo_wallet.synced_account(rpc).raw_bal < 20 * price_raw:
+                    faucet_wallet.send(
+                        rpc, demo_wallet.address, 200 * price_raw)
+                    demo_wallet.receive_all(rpc, prework=False)
+                acct = demo_wallet.synced_account(rpc)
+                demo_wallet.prework(demo_wallet._work_root(acct), rpc)
+            except Exception:
+                pass
+    Thread(target=_demo_warm, daemon=True).start()
+
+    @app.get("/demo/article")
+    def demo_article(request: Request):
+        """The article itself lives behind a genuine 402 — no theater."""
+        resource = str(request.url)
+        try:
+            block = _extract_block(request)
+            if block is None:
+                body = payment_required_body(
+                    price_raw, server_wallet.address, resource
+                )
+                return JSONResponse(
+                    body, status_code=402,
+                    headers={"PAYMENT-REQUIRED": base64.b64encode(
+                        json.dumps(body).encode()).decode()},
+                )
+            verify_block(block, price_raw, server_wallet.address, rpc)
+            receipt = settle_block(block, rpc)
+        except PaymentInvalid as e:
+            return JSONResponse(
+                {"error": f"payment invalid: {e}"}, status_code=402
+            )
+        return JSONResponse(
+            {"article": DEMO_ARTICLE, "paid_xno": raw_to_xno(price_raw),
+             "timestamp": int(time.time())},
+            headers={"PAYMENT-RESPONSE": base64.b64encode(
+                json.dumps(receipt).encode()).decode()},
+        )
+
+    @app.post("/demo/run")
+    def demo_run(request: Request):
+        """Drive the real client loop against /demo/article and narrate it."""
+        ip = (request.headers.get("x-real-ip")
+              or request.headers.get("x-forwarded-for", "").split(",")[0].strip()
+              or (request.client.host if request.client else "?"))
+        now = time.time()
+        if now - _demo_hits["ips"].get(ip, 0) < 15:
+            return JSONResponse(
+                {"error": "one unlock per 15 seconds per visitor — easy"},
+                status_code=429)
+        _demo_hits["window"] = [t for t in _demo_hits["window"] if now - t < 60]
+        if len(_demo_hits["window"]) >= 12:
+            return JSONResponse(
+                {"error": "demo is busy — try again in a minute"},
+                status_code=429)
+        _demo_hits["ips"][ip] = now
+        _demo_hits["window"].append(now)
+
+        import threading
+
+        import requests as _rq
+
+        from .x402 import (build_payment_header, offer_amount_raw,
+                           offer_pay_to, parse_quote, pick_nano_offer)
+        target = f"{SITE_URL}/demo/article"
+        with _demo_lock:
+            t0 = time.time()
+            try:
+                r1 = _rq.get(target, timeout=30)
+                if r1.status_code != 402:
+                    raise RuntimeError(f"expected 402, got {r1.status_code}")
+                t_quote = time.time()
+                quote = parse_quote(r1)
+                offer = pick_nano_offer(quote)
+                amount = offer_amount_raw(offer)
+                if amount > price_raw * 2:
+                    raise RuntimeError("quote exceeds demo cap")
+                block, new_frontier, work_root = (
+                    demo_wallet.build_payment_block(
+                        rpc, offer_pay_to(offer), amount))
+                hdr = build_payment_header(
+                    quote, offer, block, offer_pay_to(offer))
+                t_sign = time.time()
+                r2 = _rq.get(target, timeout=60, headers={
+                    "PAYMENT-SIGNATURE": hdr, "X-PAYMENT": hdr})
+                t_settle = time.time()
+                print(f"[demo] quote={t_quote-t0:.2f}s "
+                      f"sign={t_sign-t_quote:.2f}s "
+                      f"settle={t_settle-t_sign:.2f}s", flush=True)
+            except Exception as e:
+                return JSONResponse(
+                    {"error": f"demo hiccup: {e}"}, status_code=500)
+            elapsed = round(time.time() - t0, 2)  # click → paid response
+        receipt = {}
+        rec_hdr = r2.headers.get("payment-response")
+        if rec_hdr:
+            try:
+                receipt = json.loads(base64.b64decode(rec_hdr))
+            except Exception:
+                pass
+        ok = 200 <= r2.status_code < 300
+
+        def _demo_finish():  # next-run PoW + wallet upkeep, off the clock
+            with _demo_lock:
+                try:
+                    if ok:
+                        demo_wallet.payment_succeeded(
+                            rpc, new_frontier, work_root)
+                    else:
+                        demo_wallet.payment_failed(work_root)
+                    demo_wallet.receive_all(rpc, prework=False)
+                    if demo_wallet.synced_account(
+                            rpc).raw_bal < 20 * price_raw:
+                        faucet_wallet.send(
+                            rpc, demo_wallet.address, 200 * price_raw)
+                        demo_wallet.receive_all(rpc, prework=False)
+                    acct = demo_wallet.synced_account(rpc)
+                    demo_wallet.prework(demo_wallet._work_root(acct), rpc)
+                except Exception:
+                    pass
+        threading.Thread(target=_demo_finish, daemon=True).start()
+
+        if not ok or not receipt.get("hash"):
+            return JSONResponse(
+                {"error": f"payment did not settle (HTTP {r2.status_code})"},
+                status_code=500)
+        offer = (quote.get("accepts") or [{}])[0]
+        ledger = None
+        try:  # the on-page "view from the blockchain": block_info from the node
+            info = rpc.call({"action": "block_info", "json_block": "true",
+                             "hash": receipt["hash"]})
+            contents = info.get("contents") or {}
+            ledger = {
+                "hash": receipt["hash"],
+                "confirmed": str(info.get("confirmed")).lower() == "true",
+                "amount_xno": str(raw_to_xno(int(info.get("amount", 0)))),
+                "from": contents.get("account", demo_wallet.address),
+                "to": server_wallet.address,
+                "type": contents.get("subtype") or "send",
+                "timestamp": int(info.get("local_timestamp") or time.time()),
+            }
+        except Exception:
+            pass
+        return {
+            "amount_xno": str(raw_to_xno(int(offer.get("amount") or price_raw))),
+            "payer": demo_wallet.address,
+            "hash": receipt["hash"],
+            "confirmed": bool(receipt.get("confirmed")),
+            "explorer": f"https://nanexplorer.com/nano/block/{receipt['hash']}",
+            "elapsed_s": elapsed,
+            "article": r2.json().get("article"),
+            "ledger": ledger,
+        }
+
+    _compare_cache = {"ts": 0.0, "data": None}
+
+    @app.get("/demo/compare")
+    def demo_compare():
+        """Live rail comparison from a real multi-rail merchant (nano-gpt).
+
+        Dry-run quote only — no payment is made. Cached 10 min to stay
+        polite to their endpoint."""
+        now = time.time()
+        if _compare_cache["data"] and now - _compare_cache["ts"] < 600:
+            return {**_compare_cache["data"], "cached": True}
+        import requests as _rq
+
+        from .x402 import compare_rails, parse_quote
+        try:
+            r = _rq.post(
+                "https://nano-gpt.com/api/v1/chat/completions",
+                headers={"x-x402": "true",
+                         "Content-Type": "application/json"},
+                json={"model": "gpt-5-nano",
+                      "messages": [{"role": "user", "content": "hi"}],
+                      "max_tokens": 1},
+                timeout=30)
+            if r.status_code != 402:
+                raise RuntimeError(f"expected 402, got {r.status_code}")
+            rows, seen = [], set()
+            for row in compare_rails(parse_quote(r)):
+                key = (row.get("payer_sends"),
+                       (row.get("network") or "").replace("-", ":"))
+                if key in seen:
+                    continue
+                seen.add(key)
+                svc = row.get("service_cost_usd") or 0
+                paid = row.get("payer_cost_usd") or 0
+                rows.append({
+                    "network": row.get("network"),
+                    "asset": row.get("asset"),
+                    "payer_sends": row.get("payer_sends"),
+                    "usd": paid,
+                    "markup": round(paid / svc, 1) if svc else None,
+                    "feeless": bool(row.get("feeless")),
+                })
+            data = {
+                "source": "nano-gpt.com — one-token chat completion "
+                          "(smallest meterable call)",
+                "rows": rows,
+                "fetched_unix": now,
+            }
+            _compare_cache.update(ts=now, data=data)
+            return {**data, "cached": False}
+        except Exception as e:
+            if _compare_cache["data"]:
+                return {**_compare_cache["data"], "cached": True,
+                        "stale": True}
+            return JSONResponse(
+                {"error": f"live quote unavailable: {e}"}, status_code=503)
+
+    _gas_cache = {"ts": 0.0, "data": None}
+
+    @app.get("/demo/gas")
+    def demo_gas():
+        """Live Base gas → the real cost behind one USDC settlement.
+
+        Shows why the $0.001 price floor exists at current prices.
+        Cached 10 min."""
+        now = time.time()
+        if _gas_cache["data"] and now - _gas_cache["ts"] < 600:
+            return {**_gas_cache["data"], "cached": True}
+        import requests as _rq
+        try:
+            g = _rq.post(
+                "https://mainnet.base.org",
+                json={"jsonrpc": "2.0", "method": "eth_gasPrice",
+                      "params": [], "id": 1},
+                timeout=10).json()
+            gas_wei = int(g["result"], 16)
+            eth = _rq.get(
+                "https://api.coingecko.com/api/v3/simple/price"
+                "?ids=ethereum&vs_currencies=usd",
+                timeout=10).json()["ethereum"]["usd"]
+            gas_units = 80000  # ≈ ERC-20 transferWithAuthorization
+            fee = gas_wei * gas_units / 1e18 * eth
+            data = {"base_gas_gwei": round(gas_wei / 1e9, 4),
+                    "eth_usd": eth, "gas_units_est": gas_units,
+                    "usdc_settlement_fee_usd": fee,
+                    "fetched_unix": now}
+            _gas_cache.update(ts=now, data=data)
+            return {**data, "cached": False}
+        except Exception as e:
+            if _gas_cache["data"]:
+                return {**_gas_cache["data"], "cached": True, "stale": True}
+            return JSONResponse(
+                {"error": f"gas data unavailable: {e}"}, status_code=503)
 
     @app.get("/faucet/challenge")
     def faucet_challenge(address: str = ""):
