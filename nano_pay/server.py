@@ -68,6 +68,13 @@ def _save_ledger(led):
     FAUCET_LEDGER.write_text(json.dumps(led, indent=2))
 
 
+def _client_ip(request) -> str:
+    """Real client IP behind the nginx proxy (X-Real-IP), with fallbacks."""
+    return (request.headers.get("x-real-ip")
+            or request.headers.get("x-forwarded-for", "").split(",")[0].strip()
+            or (request.client.host if request.client else "unknown"))
+
+
 def rail_hint(price_raw: int) -> dict:
     return {
         "cheapest": "nano:mainnet",
@@ -537,9 +544,7 @@ def create_app() -> FastAPI:
     @app.post("/demo/run")
     def demo_run(request: Request):
         """Drive the real client loop against /demo/article and narrate it."""
-        ip = (request.headers.get("x-real-ip")
-              or request.headers.get("x-forwarded-for", "").split(",")[0].strip()
-              or (request.client.host if request.client else "?"))
+        ip = _client_ip(request)
         now = time.time()
         if now - _demo_hits["ips"].get(ip, 0) < 15:
             return JSONResponse(
@@ -801,7 +806,7 @@ def create_app() -> FastAPI:
                 {"error": "address already claimed its starter XNO"},
                 status_code=429,
             )
-        ip = request.client.host if request.client else "unknown"
+        ip = _client_ip(request)
         day_ago = time.time() - 86400
         recent = [t for t in led["ips"].get(ip, []) if t > day_ago]
         if len(recent) >= FAUCET_PER_IP_PER_DAY:

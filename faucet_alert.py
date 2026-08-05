@@ -16,6 +16,14 @@ LEDGER = Path.home() / ".nano-pay" / "faucet-ledger.json"
 STATE = Path.home() / ".nano-pay" / "faucet-alert-state.json"
 FAUCET_XNO = float(os.getenv("F402_FAUCET_XNO", "0.005"))
 LOCAL = {"127.0.0.1", "::1", "localhost", "unknown", ""}
+# Operator self-traffic IPs (server, home) live outside the repo:
+# ~/.nano-pay/self-ips.txt, one IP per line.
+try:
+    LOCAL |= {l.strip() for l in
+              (Path.home() / ".nano-pay" / "self-ips.txt").read_text().splitlines()
+              if l.strip() and not l.startswith("#")}
+except Exception:
+    pass
 
 def _env_fallback(key: str) -> str:
     """Env var first, else KEY=VALUE lines in ~/.nano-pay/telegram.env."""
@@ -53,47 +61,59 @@ def load(p: Path, default):
         return default
 
 
+def _external_addrs(led) -> set:
+    """Addresses whose claim time matches (±2s) a non-local IP's claim time.
+
+    The ledger stores addresses and IPs in separate maps with no direct link;
+    claim timestamps are written from the same time.time() call, so proximity
+    is the association.
+    """
+    ext_times = [t for ip, ts in led.get("ips", {}).items()
+                 if ip not in LOCAL for t in ts]
+    return {a for a, at in led.get("addresses", {}).items()
+            if any(abs(at - t) < 2 for t in ext_times)}
+
+
 def main() -> None:
     led = load(LEDGER, {"addresses": {}, "ips": {}})
     addrs = set(led.get("addresses", {}))
-    ips = set(led.get("ips", {}))
-    ext_ips = {ip for ip in ips if ip not in LOCAL}
+    ext_ips = {ip for ip in led.get("ips", {}) if ip not in LOCAL}
+    ext_addrs = _external_addrs(led)
 
     st = load(STATE, None)
     if st is None:
         # First run: baseline existing claims silently, confirm the channel works.
         STATE.write_text(json.dumps(
-            {"seen_addr": sorted(addrs), "seen_ext_ip": sorted(ext_ips)}))
+            {"seen_addr": sorted(addrs), "seen_ext_addr": sorted(ext_addrs)}))
         tg(
             "✅ <b>Feeless402 faucet alerts armed</b>\n"
             "I'll ping you here the moment a real (external) agent claims "
             "starter Nano.\n"
-            f"Baseline now: {len(addrs)} claim(s), all local/test — "
-            "so the next ping means a stranger showed up. 🎉\n"
+            f"Baseline now: {len(addrs)} claim(s) — "
+            "the next ping means a stranger showed up. 🎉\n"
             "Stats: https://feeless402.com/stats"
         )
         return
 
-    seen_addr = set(st.get("seen_addr", []))
-    seen_ext_ip = set(st.get("seen_ext_ip", []))
-    new_ext_ip = ext_ips - seen_ext_ip
-    new_addr = addrs - seen_addr
+    seen_ext = set(st.get("seen_ext_addr", []))
+    new_ext = ext_addrs - seen_ext
 
-    if new_ext_ip:  # a real external agent claimed
+    if new_ext:  # a real external agent claimed
         total = len(addrs)
         disp = round(total * FAUCET_XNO, 6)
-        newest = sorted(new_addr)[-1] if new_addr else "(address n/a)"
-        extra = f" (+{len(new_addr)} new)" if len(new_addr) > 1 else ""
+        newest = sorted(new_ext)[-1]
+        extra = f" (+{len(new_ext) - 1} more)" if len(new_ext) > 1 else ""
         tg(
             "🚰🎉 <b>Feeless402 — real faucet claim!</b>\n"
             "A stranger's agent just pulled starter Nano.\n"
             f"New address{extra}: <code>{newest}</code>\n"
             f"Total agents funded: <b>{total}</b> · {disp} XNO dispensed\n"
+            f"External IPs so far: {len(ext_ips)}\n"
             "See it live: https://feeless402.com/stats"
         )
 
     STATE.write_text(json.dumps(
-        {"seen_addr": sorted(addrs), "seen_ext_ip": sorted(ext_ips)}))
+        {"seen_addr": sorted(addrs), "seen_ext_addr": sorted(ext_addrs)}))
 
 
 if __name__ == "__main__":
