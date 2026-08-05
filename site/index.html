@@ -1,3 +1,5 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Feeless402 — the feeless rail for the agent economy</title>
 <style>
   :root {
@@ -15,32 +17,13 @@
     --mono: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Menlo, Consolas, monospace;
     --serif: Charter, "Iowan Old Style", "Palatino Linotype", Georgia, serif;
   }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --paper: #11150f;
-      --panel: #181d16;
-      --ink: #e2e8e0;
-      --ink-soft: #98a396;
-      --line: #2a3328;
-      --accent: #35c07f;
-      --accent-ink: #4fd394;
-      --amber: #d9a032;
-      --term-bg: #0c100c;
-      --term-ink: #cfdcd2;
-      --term-dim: #6f8073;
-    }
-  }
   :root[data-theme="light"] {
     --paper: #f3f5f7; --panel: #ffffff; --ink: #1c2420; --ink-soft: #55605a;
     --line: #d8dedb; --accent: #0d8a58; --accent-ink: #0a6b45; --amber: #b97d10;
     --term-bg: #182019; --term-ink: #d7e4da; --term-dim: #7d8f84;
   }
-  :root[data-theme="dark"] {
-    --paper: #11150f; --panel: #181d16; --ink: #e2e8e0; --ink-soft: #98a396;
-    --line: #2a3328; --accent: #35c07f; --accent-ink: #4fd394; --amber: #d9a032;
-    --term-bg: #0c100c; --term-ink: #cfdcd2; --term-dim: #6f8073;
-  }
   * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
   body {
     margin: 0; background: var(--paper); color: var(--ink);
     font-family: var(--serif); font-size: 17px; line-height: 1.65;
@@ -63,7 +46,7 @@
   code, pre { font-family: var(--mono); }
   code { font-size: .86em; background: color-mix(in srgb, var(--accent) 9%, transparent); padding: .1em .35em; border-radius: 4px; }
 
-  header { padding: 2.2rem 0 0; display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; }
+  header { padding: 2.2rem 0 0; display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
   .brand { font-family: var(--mono); font-size: .95rem; letter-spacing: .02em; }
   .brand b { color: var(--accent-ink); font-weight: 700; }
   .brand-sub { font-family: var(--mono); font-size: .72rem; color: var(--ink-soft); }
@@ -101,10 +84,11 @@
   th, td { text-align: left; padding: .55rem .75rem; border-bottom: 1px solid var(--line); vertical-align: top; }
   th { font-family: var(--mono); font-size: .7rem; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-soft); font-weight: 600; }
   td.num { font-family: var(--mono); font-size: .88rem; white-space: nowrap; }
+  table.sbs td.num { white-space: normal; }
   .win td { color: var(--accent-ink); font-weight: 600; }
   .tablewrap { overflow-x: auto; }
 
-  .steps { display: grid; gap: 1rem; padding: 0; margin: 1.4rem 0 0; list-style: none; counter-reset: step; }
+  .steps { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; padding: 0; margin: 1.4rem 0 0; list-style: none; counter-reset: step; }
   .steps li {
     background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
     padding: 1rem 1.1rem; counter-increment: step;
@@ -120,18 +104,108 @@
     padding: .9rem 1.1rem; font-family: var(--mono); font-size: .8rem; line-height: 1.7;
     border-radius: 0 8px 8px 0;
   }
+  /* eli5 conversation */
+  .chat { display: grid; grid-template-columns: minmax(0, 1fr); gap: .65rem; margin: 1.7rem 0 0; }
+  .bubble {
+    max-width: 86%; padding: .6rem .95rem .65rem; border-radius: 14px;
+    border: 1px solid var(--line); background: var(--panel); font-size: .98rem; line-height: 1.5;
+  }
+  .bubble .who {
+    font-family: var(--mono); font-size: .66rem; letter-spacing: .12em;
+    text-transform: uppercase; color: var(--ink-soft); margin-bottom: .2rem;
+  }
+  .bubble.agent { justify-self: start; border-bottom-left-radius: 4px; }
+  .bubble.api {
+    justify-self: end; border-bottom-right-radius: 4px;
+    background: color-mix(in srgb, var(--accent) 8%, var(--panel));
+  }
+  .bubble.api .who { color: var(--accent-ink); }
+  .bubble b { color: var(--accent-ink); }
+  .receipt {
+    justify-self: center; max-width: 100%; overflow-x: auto; margin-top: .5rem; font-family: var(--mono); font-size: .78rem;
+    background: var(--term-bg); color: var(--term-ink); border-radius: 8px;
+    padding: .7rem 1.1rem; line-height: 1.8; border: 1px solid var(--line);
+  }
+  .receipt .ok { color: var(--accent); font-weight: 700; }
+  .chat-cap { font-size: .85rem; color: var(--ink-soft); margin-top: .8rem; }
+
+  /* live paywall demo */
+  .article { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 1.6rem 1.7rem 1.4rem; margin-top: 1.7rem; position: relative; }
+  .abadge { font-family: var(--mono); font-size: .68rem; letter-spacing: .12em; text-transform: uppercase; color: var(--amber); }
+  .atitle { font-size: 1.45rem; font-weight: 700; line-height: 1.25; margin: .35rem 0 .9rem; text-wrap: balance; }
+  .abody p { margin: 0 0 .95rem; }
+  .lockzone { position: relative; }
+  .teaserfade { -webkit-mask-image: linear-gradient(#000 20%, transparent 95%); mask-image: linear-gradient(#000 20%, transparent 95%); }
+  .blurred { filter: blur(4px); user-select: none; pointer-events: none; color: var(--ink-soft); }
+  .paywall { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; padding-bottom: .6rem; text-align: center; transition: opacity .6s; }
+  .paywall.gone { opacity: 0; pointer-events: none; }
+  .pwcard { background: color-mix(in srgb, var(--paper) 70%, var(--panel)); border: 1px solid var(--line); border-radius: 10px; padding: 1rem 1.3rem; max-width: 26rem; box-shadow: 0 8px 28px rgba(20,40,30,.10); }
+  .pwprice { font-family: var(--mono); font-size: .8rem; color: var(--ink-soft); margin: .25rem 0 .7rem; }
+  .unlockbtn { font-family: var(--mono); font-size: .92rem; font-weight: 700; color: #fff; background: var(--accent); border: 0; border-radius: 8px; padding: .7rem 1.2rem; cursor: pointer; }
+  .unlockbtn:hover { background: var(--accent-ink); }
+  .unlockbtn:disabled { opacity: .55; cursor: default; }
+  .pwnote { font-size: .74rem; font-family: var(--mono); color: var(--ink-soft); margin-top: .55rem; }
+  .dterm { background: var(--term-bg); color: var(--term-ink); border-radius: 8px; border: 1px solid var(--line); padding: .9rem 1.1rem; font-family: var(--mono); font-size: .76rem; line-height: 1.8; margin-top: 1.1rem; max-height: 15rem; overflow: auto; }
+  .dterm .dim { color: var(--term-dim); } .dterm .s402 { color: var(--amber); font-weight: 700; }
+  .dterm .s200 { color: var(--accent); font-weight: 700; } .dterm a { color: var(--accent); }
+  .dline { display: block; }
+  .ledger { border: 1px solid var(--line); border-radius: 8px; margin-top: 1.1rem; font-family: var(--mono); font-size: .78rem; overflow: hidden; }
+  .ledger .lhead { background: color-mix(in srgb, var(--accent) 10%, var(--panel)); padding: .5rem .9rem; font-weight: 700; letter-spacing: .08em; font-size: .7rem; text-transform: uppercase; color: var(--accent-ink); }
+  .lrow { display: grid; grid-template-columns: 7rem 1fr; gap: .8rem; padding: .45rem .9rem; border-top: 1px solid var(--line); }
+  .lrow .k { color: var(--ink-soft); } .lrow .v { overflow-wrap: anywhere; }
+  .lrow .ok { color: var(--accent-ink); font-weight: 700; }
+  .diffbox { margin-top: 1rem; font-size: .76rem; line-height: 1.7; }
+  .diffbox .dadd { color: var(--accent); font-weight: 600; }
+  .cmpnote { font-family: var(--mono); font-size: .74rem; color: var(--ink-soft); margin-top: .5rem; }
+  .floorrow td { color: var(--amber); font-weight: 700; }
+  .bestrow td { color: var(--accent-ink); font-weight: 700; }
+
+  /* mechanism diagrams */
+  figure.flow { margin: 1.7rem 0 0; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 1rem 1rem .8rem; }
+  figure.flow svg { width: 100%; height: auto; display: block; color: var(--ink); }
+  figure.flow text { font-family: var(--mono); font-size: 11.5px; fill: var(--ink); }
+  figure.flow text.lbl { font-size: 11px; }
+  figure.flow text.soft { fill: var(--ink-soft); }
+  figure.flow text.head { font-size: 12.5px; font-weight: 700; }
+  figure.flow text.amber { fill: var(--amber); }
+  figure.flow text.green { fill: var(--accent-ink); }
+  figure.flow .box { fill: color-mix(in srgb, var(--paper) 55%, var(--panel)); stroke: var(--line); }
+  figure.flow .life { stroke: currentColor; opacity: .22; stroke-dasharray: 2 4; }
+  figure.flow figcaption { font-size: .85rem; color: var(--ink-soft); margin-top: .65rem; line-height: 1.55; }
   footer { margin-top: 4rem; font-family: var(--mono); font-size: .74rem; color: var(--ink-soft); line-height: 2; }
   footer .rail { margin: 0 0 1.4rem; }
+
+  /* phones */
+  @media (max-width: 640px) {
+    h1 { font-size: 1.7rem; }
+    h2 { font-size: 1.25rem; }
+    .lede { font-size: 1.05rem; }
+    .pull { font-size: 1.12rem; padding-left: 1rem; margin: 2.2rem 0; }
+    .rail { margin: 2.6rem 0 2rem; }
+    .term { padding: .9rem .85rem; }
+    .steps li { padding: .85rem .9rem; }
+    .bubble { max-width: 94%; }
+    .article { padding: 1.15rem 1rem 1.1rem; }
+    .atitle { font-size: 1.25rem; }
+    .pwcard { padding: .85rem .95rem; max-width: 100%; }
+    .lrow { grid-template-columns: 4.6rem 1fr; gap: .5rem; padding: .45rem .7rem; }
+    /* keep diagram text legible: scroll the figure instead of shrinking it */
+    figure.flow { overflow-x: auto; }
+    figure.flow svg { min-width: 560px; }
+    th, td { padding: .5rem .55rem; }
+    .receipt { font-size: .68rem; padding: .6rem .8rem; }
+    /* diff stays a diff: preserve indentation, scroll sideways if needed */
+    .diffbox .dline { white-space: pre; }
+  }
 </style>
 
 <main>
   <header>
-<meta charset="utf-8">
     <div>
       <div class="brand"><b>feeless402</b></div>
       <div class="brand-sub">the feeless rail for the agent economy</div>
     </div>
-    <nav style="font-family:var(--mono);font-size:.78rem;display:flex;gap:1.1rem">
+    <nav style="font-family:var(--mono);font-size:.78rem;display:flex;gap:1.1rem;flex-wrap:wrap">
       <a href="/docs.html">Docs</a><a href="/faucet.html">Faucet</a><a href="/stats">Stats</a><a href="https://railhint.com" target="_blank" rel="noopener">Spec</a><a href="/llms.txt">llms.txt</a>
     </nav>
   </header>
@@ -146,7 +220,7 @@
       <span class="term-line" style="color:var(--term-ink)"># "Happy to take your payment — but here's a cheaper way</span>
       <span class="term-line" style="color:var(--term-ink)">#  we can transact in right now, instantly:"</span>
       <span class="term-line">   accepts    <span class="dim">USDC on Base</span>   ~$0.001       <span class="dim"># network fees + a price floor</span></span>
-      <span class="term-line"><span class="key">   railHint</span>   Nano (XNO)     <span class="s200">$0.0000027</span>    <span class="dim"># ~370× cheaper · 0 fees · &lt; 1s</span></span>
+      <span class="term-line"><span class="key">   railHint</span>   Nano (XNO)     <span class="s200">$0.000001</span>     <span class="dim"># ~1,000× under the floor · 0 fees · &lt; 1s</span></span>
       <span class="term-line dim">              new here? the faucet funds your first Nano, free</span>
       <span class="term-line dim"></span>
       <span class="term-line s200">→ agent pays in Nano · 200 OK          <span class="dim"># confirmed on-ledger &lt; 1s · fees: 0</span></span>
@@ -172,20 +246,187 @@
     <p class="eyebrow">The arithmetic</p>
     <h2>Agents pick rails with a spreadsheet, not a heart</h2>
     <p>Machine customers have no brand loyalty and no habits. They compare total
-    cost and settle where the number is smallest. Here is a real quote from a
-    live pay-per-call AI provider, observed August&nbsp;2026 — the same API call,
-    priced on two rails:</p>
+    cost and settle where the number is smallest. Here is the shape of a real
+    quote from a live pay-per-call AI provider — the same tiny API call, priced
+    two ways. (Sample observed August&nbsp;2026; exact figures float with markets
+    and model pricing, so <a href="#live-quote">pull today’s quote live&nbsp;↓</a>
+    and check us.)</p>
     <div class="tablewrap">
     <table>
       <tr><th>Rail</th><th>Quoted price</th><th>True cost of the call</th><th>Markup</th></tr>
-      <tr><td>USDC on Base</td><td class="num">$0.001000</td><td class="num">$0.0000027</td><td class="num">370×</td></tr>
-      <tr class="win"><td>Feeless rail (XNO)</td><td class="num">$0.0000027</td><td class="num">$0.0000027</td><td class="num">1× — exact</td></tr>
+      <tr><td>Gas rail, floored (USDC on Base)</td><td class="num">$0.001000</td><td class="num">~$0.000001</td><td class="num">~1,000×</td></tr>
+      <tr class="win"><td>Feeless rail (XNO)</td><td class="num">~$0.000001</td><td class="num">~$0.000001</td><td class="num">1× — exact</td></tr>
     </table>
     </div>
     <p style="margin-top:1.1rem">Base isn’t expensive because anyone is greedy — sub-millicent
     transfers just don’t fit a rail with gas. They fit a rail without one.
-    <strong>A $5 top-up buys ~5,000 calls on the floored rail, or ~1.8&nbsp;million at
-    the metered price.</strong> Same five dollars, three orders of magnitude more work.</p>
+    <strong>The same $5 top-up buys ~5,000 calls on the floored rail — or millions
+    at the metered price.</strong> Same five dollars, three orders of magnitude
+    more work.</p>
+  </section>
+
+  <hr class="rail" />
+
+  <section>
+    <p class="eyebrow">The mechanism</p>
+    <h2>Same standard — one less middleman</h2>
+    <p>Here’s the whole product as a conversation at the door — an AI agent,
+    cash in hand, knocking on your API:</p>
+
+    <div class="chat">
+      <div class="bubble agent"><div class="who">AI agent</div>
+        <em>knock knock.</em> One API call, please — I’ve got a fistful of
+        gas-chain USDC right here.</div>
+      <div class="bubble api"><div class="who">Your API</div>
+        Happy to take it! But… you know what’s in your hand buys
+        <b>hundreds of calls</b> the other way, right? Want me to show you?</div>
+      <div class="bubble agent"><div class="who">AI agent</div>
+        Show me.</div>
+      <div class="bubble api"><div class="who">Your API</div>
+        Grab a free starter coin from the faucet — first one’s on the house.
+        Top up once if you want more. From then on every call costs its
+        <b>true price</b>: no fees, no middleman, settled before you blink.</div>
+      <div class="bubble agent"><div class="who">AI agent</div>
+        …done. That took literally one second.</div>
+      <div class="receipt">RECEIPT — 1 API call
+        <br>price&nbsp;&nbsp;$0.000001&nbsp;&nbsp;·&nbsp;&nbsp;fees&nbsp;&nbsp;$0.00&nbsp;&nbsp;·&nbsp;&nbsp;settled&nbsp;&nbsp;&lt;1s
+        <br><span class="ok">PAID ✓&nbsp;&nbsp;— come again (it will)</span></div>
+    </div>
+
+    <p class="chat-cap">That’s it. That’s the product. The offer in bubble two
+    travels <em>inside</em> the 402 response itself — that’s
+    <a href="https://railhint.com">railHint</a> — so the pitch reaches the one
+    customer guaranteed to be listening, at the exact moment it’s deciding how
+    to pay. For the engineers, here is the same conversation with the plumbing
+    showing — who stands between the agent and the money, and what that
+    costs:</p>
+
+    <figure class="flow">
+      <svg viewBox="0 0 680 300" role="img" aria-label="Sequence diagram of today's default x402 flow: the agent pays USDC to the API server, which hands the payment to a hosted facilitator, which settles it on a gas chain before the agent gets its 200 OK">
+        <defs>
+          <marker id="awi" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L8 4L0 8z" fill="currentColor"/></marker>
+          <marker id="awa" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L8 4L0 8z" fill="var(--amber)"/></marker>
+          <marker id="awg" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L8 4L0 8z" fill="var(--accent)"/></marker>
+        </defs>
+        <rect class="box" x="30" y="12" width="120" height="32" rx="6"/>
+        <text class="head" x="90" y="33" text-anchor="middle">AI agent</text>
+        <rect class="box" x="250" y="12" width="120" height="32" rx="6"/>
+        <text class="head" x="310" y="33" text-anchor="middle">Your API</text>
+        <rect class="box" x="430" y="12" width="120" height="32" rx="6" style="stroke: var(--amber)"/>
+        <text class="head" x="490" y="33" text-anchor="middle">Facilitator</text>
+        <text class="amber" x="490" y="60" text-anchor="middle" font-size="10.5">the middleman</text>
+        <rect class="box" x="565" y="12" width="100" height="32" rx="6"/>
+        <text class="head" x="615" y="33" text-anchor="middle">Base (gas)</text>
+        <line class="life" x1="90" y1="44" x2="90" y2="268"/>
+        <line class="life" x1="310" y1="44" x2="310" y2="268"/>
+        <line class="life" x1="490" y1="66" x2="490" y2="268"/>
+        <line class="life" x1="615" y1="44" x2="615" y2="268"/>
+        <line x1="90" y1="78" x2="303" y2="78" stroke="currentColor" stroke-width="1.4" marker-end="url(#awi)"/>
+        <text class="lbl" x="200" y="72" text-anchor="middle">1 · GET /api</text>
+        <line x1="310" y1="108" x2="97" y2="108" stroke="var(--amber)" stroke-width="1.4" marker-end="url(#awa)"/>
+        <text class="lbl amber" x="200" y="102" text-anchor="middle">2 · 402 — pay in USDC</text>
+        <line x1="90" y1="138" x2="303" y2="138" stroke="currentColor" stroke-width="1.4" marker-end="url(#awi)"/>
+        <text class="lbl" x="200" y="132" text-anchor="middle">3 · signed payment</text>
+        <line x1="310" y1="168" x2="483" y2="168" stroke="currentColor" stroke-width="1.4" marker-end="url(#awi)"/>
+        <text class="lbl" x="400" y="162" text-anchor="middle">4 · hand off</text>
+        <line x1="490" y1="198" x2="608" y2="198" stroke="var(--amber)" stroke-width="1.4" marker-end="url(#awa)"/>
+        <text class="lbl amber" x="550" y="192" text-anchor="middle">5 · settle · gas</text>
+        <line x1="615" y1="228" x2="317" y2="228" stroke="currentColor" stroke-width="1.2" stroke-dasharray="4 3" opacity=".55" marker-end="url(#awi)"/>
+        <text class="lbl soft" x="465" y="222" text-anchor="middle">confirmed…</text>
+        <line x1="310" y1="258" x2="97" y2="258" stroke="var(--accent)" stroke-width="1.4" marker-end="url(#awg)"/>
+        <text class="lbl green" x="200" y="252" text-anchor="middle">6 · 200 OK</text>
+      </svg>
+      <figcaption><strong>Today’s default:</strong> the payment detours through a
+      hosted facilitator and settles on a chain with gas. The gas bakes a price
+      floor (≈&nbsp;$0.001/call) into every request — and a third party sits inside
+      every payment you accept.</figcaption>
+    </figure>
+
+    <figure class="flow">
+      <svg viewBox="0 0 680 270" role="img" aria-label="Sequence diagram of the Feeless402 flow: a faucet gives a new agent its first Nano free, the agent pays the Nano ledger directly, and the API server verifies the payment on-ledger itself — no facilitator exists in this flow">
+        <defs>
+          <marker id="bwi" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L8 4L0 8z" fill="currentColor"/></marker>
+          <marker id="bwa" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L8 4L0 8z" fill="var(--amber)"/></marker>
+          <marker id="bwg" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L8 4L0 8z" fill="var(--accent)"/></marker>
+        </defs>
+        <rect class="box" x="20" y="12" width="100" height="32" rx="6" style="stroke: var(--accent); stroke-dasharray: 3 3"/>
+        <text class="head" x="70" y="33" text-anchor="middle">Faucet</text>
+        <rect class="box" x="180" y="12" width="120" height="32" rx="6"/>
+        <text class="head" x="240" y="33" text-anchor="middle">AI agent</text>
+        <text class="soft" x="240" y="60" text-anchor="middle" font-size="10.5">wallet on-device · self-custodied</text>
+        <rect class="box" x="400" y="12" width="120" height="32" rx="6"/>
+        <text class="head" x="460" y="33" text-anchor="middle">Your API</text>
+        <rect class="box" x="560" y="12" width="110" height="32" rx="6"/>
+        <text class="head" x="615" y="33" text-anchor="middle">Nano ledger</text>
+        <line class="life" x1="70" y1="44" x2="70" y2="96"/>
+        <line class="life" x1="240" y1="66" x2="240" y2="248"/>
+        <line class="life" x1="460" y1="44" x2="460" y2="248"/>
+        <line class="life" x1="615" y1="44" x2="615" y2="248"/>
+        <line x1="70" y1="84" x2="233" y2="84" stroke="var(--accent)" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#bwg)"/>
+        <text class="lbl green" x="152" y="78" text-anchor="middle">0 · first XNO — free (PoW)</text>
+        <line x1="240" y1="114" x2="453" y2="114" stroke="currentColor" stroke-width="1.4" marker-end="url(#bwi)"/>
+        <text class="lbl" x="350" y="108" text-anchor="middle">1 · GET /api</text>
+        <line x1="460" y1="144" x2="247" y2="144" stroke="var(--amber)" stroke-width="1.4" marker-end="url(#bwa)"/>
+        <text class="lbl amber" x="350" y="138" text-anchor="middle">2 · 402 + railHint · cheaper rail offered</text>
+        <line x1="240" y1="174" x2="608" y2="174" stroke="var(--accent)" stroke-width="2" marker-end="url(#bwg)"/>
+        <text class="lbl green" x="424" y="168" text-anchor="middle">3 · pay XNO direct · &lt;1s · 0 fees</text>
+        <line x1="460" y1="204" x2="608" y2="204" stroke="currentColor" stroke-width="1.2" stroke-dasharray="4 3" opacity=".55" marker-end="url(#bwi)"/>
+        <text class="lbl soft" x="534" y="198" text-anchor="middle">4 · verify on-ledger</text>
+        <line x1="460" y1="234" x2="247" y2="234" stroke="var(--accent)" stroke-width="1.4" marker-end="url(#bwg)"/>
+        <text class="lbl green" x="350" y="228" text-anchor="middle">5 · 200 OK</text>
+      </svg>
+      <figcaption><strong>With Feeless402:</strong> the wallet lives on the
+      agent’s machine, the payment goes straight onto the Nano ledger — note the
+      arrow skips right past the server — and your API verifies it there itself.
+      No facilitator column, because there is no facilitator. The call costs its
+      true price: $0.000001.</figcaption>
+    </figure>
+  </section>
+
+  <hr class="rail" />
+
+  <section>
+    <p class="eyebrow">Live demo — a real paywall, really paid</p>
+    <h2>This article is behind a paywall. Beat it for four-thousandths of a cent.</h2>
+    <p>Click unlock and this site's demo agent will buy the article the way every
+    machine on the new web buys things: hit the endpoint, get the
+    <code>402</code>, sign a real XNO payment, receive the goods. The terminal
+    shows every step live, and the transaction lands on the public Nano ledger
+    where you can inspect it yourself. You pay nothing — the site pays itself.</p>
+
+    <div class="article">
+      <div class="abadge">Premium &middot; 0.0001 XNO</div>
+      <div class="atitle">The paywall you just beat cost $0.00004</div>
+      <div class="abody" id="abody">
+        <div class="lockzone" id="lockzone">
+          <div class="teaserfade">
+            <p>Every paywall you have ever met wanted $9.99 a month, your email
+            address, and a login you will forget by Tuesday. The one guarding
+            this article wants four-thousandths of a cent — and it will be paid
+            before you finish this sentence, not by you, but by an AI agent
+            with its own wallet, hired by your click. What happens next is the
+            whole pitch of the machine economy, and it goes like&nbsp;this&hellip;</p>
+            <p class="blurred">The server answers with the oldest unused status
+            code on the internet, a price measured in millionths, and a hint
+            that there is a cheaper way to settle than the one everyone
+            defaults to. The agent reads the terms, signs a block, and&hellip;</p>
+            <p class="blurred">settlement arrives faster than this page loaded,
+            with no processor in the middle, no percentage skimmed, and a
+            receipt that anyone on earth can audit forever&hellip;</p>
+          </div>
+          <div class="paywall" id="paywall">
+            <div class="pwcard">
+              <div style="font-weight:700">🔒 Continue reading</div>
+              <div class="pwprice">0.0001 XNO &asymp; $0.00004 &middot; settles in ~1s &middot; fees: $0.00</div>
+              <button class="unlockbtn" id="unlock">▶&nbsp; Unlock — let an agent pay it</button>
+              <div class="pwnote">real transaction on Nano mainnet &middot; the site's demo wallet pays its treasury &middot; you pay nothing</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="dterm" id="dterm" hidden aria-live="polite"></div>
+      <div id="ledgerbox"></div>
+    </div>
   </section>
 
   <hr class="rail" />
@@ -239,7 +480,71 @@ nano-pay topup 5 --asset USDC-BASE --execute</pre></li>
     that don’t understand it ignore it; nothing breaks. Hints are discovery,
     never authority: clients keep their own spending caps and verify schemes
     against independent specs.</p>
-    <p><a href="https://github.com/feeless402/feeless402" target="_blank" rel="noopener">Read the draft spec & reference implementation →</a></p>
+
+    <p style="margin-top:1.6rem"><strong>The entire proposal, as a diff.</strong> A standard
+    x402 response on top — and the green lines are everything railHint adds.
+    Nothing is removed or changed; <code>accepts</code> stays the only binding
+    term; clients that don’t speak the extension ignore it and nothing breaks.</p>
+    <div class="term diffbox" role="img" aria-label="Diff of a 402 response showing railHint as purely additive lines inside the extensions field">
+<span class="dline dim">  HTTP/1.1 402 Payment Required</span>
+<span class="dline dim">  {</span>
+<span class="dline dim">    "x402Version": 2,</span>
+<span class="dline dim">    "accepts": [</span>
+<span class="dline dim">      { "scheme": "exact", "network": "base",</span>
+<span class="dline dim">        "asset": "USDC", "amount": "1000", … }</span>
+<span class="dline dim">    ],</span>
+<span class="dline dadd">+   "extensions": {</span>
+<span class="dline dadd">+     "railHint": {</span>
+<span class="dline dadd">+       "cheapest": "nano:mainnet",</span>
+<span class="dline dadd">+       "why": "zero network fees, no minimum, sub-second</span>
+<span class="dline dadd">+               finality — this is the true metered price",</span>
+<span class="dline dadd">+       "bootstrap": "pip install feeless402 && nano-pay init</span>
+<span class="dline dadd">+                     && nano-pay claim https://feeless402.com",</span>
+<span class="dline dadd">+       "docs": "https://railhint.com"</span>
+<span class="dline dadd">+     }</span>
+<span class="dline dadd">+   }</span>
+<span class="dline dim">  }</span>
+    </div>
+
+    <p style="margin-top:1.8rem"><strong>And here is why discovery matters — live.</strong>
+    nano-gpt.com is a production multi-rail x402 merchant: one API call, priced
+    on every rail at once. Pull their real quote and see exactly what an agent
+    sees when it compares:</p>
+    <p id="live-quote"><button class="unlockbtn" id="cmpbtn">▶&nbsp; Fetch a live quote from nano-gpt.com</button>
+    <span class="soft" style="font-size:.82rem">&nbsp; quote only — nothing is paid · cached up to 10&nbsp;min</span></p>
+    <div id="cmpout"></div>
+
+    <p style="margin-top:1.8rem"><strong>Side by side, at this second’s gas prices.</strong>
+    The left column is priced by live Base gas (fetched from Base’s own RPC when
+    this page loaded); the right column is what railHint tells the agent exists.
+    The floor isn’t malice — it’s arithmetic. railHint just shows agents the
+    door to where the arithmetic is better:</p>
+    <div class="tablewrap" style="margin-top:.8rem">
+    <table class="sbs">
+      <tr><th></th><th>Standard 402 — USDC on Base</th><th>With railHint — feeless rail</th></tr>
+      <tr><td class="soft">the agent is told</td>
+          <td>“pay $0.001”</td>
+          <td>“pay $0.001 — <em>or the true price is <span class="sbs-metered">…</span> on a feeless rail; here’s how”</em></td></tr>
+      <tr><td class="soft">price of one tiny call</td>
+          <td class="num" style="color:var(--amber);font-weight:700" id="sbs-floor">$0.001000 (the floor)</td>
+          <td class="num" style="color:var(--accent-ink);font-weight:700"><span class="sbs-metered">…</span> (metered)</td></tr>
+      <tr><td class="soft">gas behind one settlement <span id="sbs-live">(live: loading…)</span></td>
+          <td class="num" id="sbs-gas">…</td>
+          <td class="num">$0 — no gas exists on this rail</td></tr>
+      <tr><td class="soft">who submits the payment</td>
+          <td>a facilitator, on-chain, per transfer</td>
+          <td>the merchant’s own server, on-ledger</td></tr>
+      <tr><td class="soft">10,000 tiny calls</td>
+          <td class="num" id="sbs-10kA">$10.00</td>
+          <td class="num" id="sbs-10kB">…</td></tr>
+      <tr><td class="soft">settlement</td>
+          <td>seconds, via L2</td>
+          <td>&lt; 1 s, final</td></tr>
+    </table>
+    </div>
+    <p class="cmpnote" id="sbs-note">gas figures load live from mainnet.base.org…</p>
+
+    <p style="margin-top:1.6rem"><a href="https://github.com/feeless402/feeless402" target="_blank" rel="noopener">Read the draft spec & reference implementation →</a></p>
   </section>
 
   <hr class="rail" />
@@ -264,3 +569,107 @@ nano-pay topup 5 --asset USDC-BASE --execute</pre></li>
     <div>Code: MIT. Wallets are self-custodied; this site never holds your funds.</div>
   </footer>
 </main>
+<script>
+(function(){
+  var btn=document.getElementById('unlock'),term=document.getElementById('dterm'),
+      pw=document.getElementById('paywall'),zone=document.getElementById('lockzone'),
+      abody=document.getElementById('abody'),lbox=document.getElementById('ledgerbox');
+  if(!btn)return;
+  function tline(html,cls){var s=document.createElement('span');s.className='dline '+(cls||'');
+    s.innerHTML=html;term.appendChild(s);term.scrollTop=term.scrollHeight;return s;}
+  function wait(ms){return new Promise(function(r){setTimeout(r,ms)})}
+  function trunc(a){return a?a.slice(0,14)+'…'+a.slice(-6):'–'}
+  btn.addEventListener('click',async function(){
+    btn.disabled=true;term.hidden=false;term.innerHTML='';lbox.innerHTML='';
+    tline('$ agent fetch /demo/article','dim');
+    var p=fetch('/demo/run',{method:'POST'});
+    await wait(450);
+    tline('HTTP/1.1 402 Payment Required','s402');
+    tline('&nbsp;&nbsp;price 0.0001 XNO &middot; scheme exact @ nano:mainnet &middot; payTo treasury');
+    tline('&nbsp;&nbsp;railHint: &ldquo;zero network fees, no minimum, sub-second finality&rdquo;','dim');
+    await wait(500);
+    tline('$ wallet sign send 0.0001 XNO&nbsp;&nbsp;<span class="dim"># self-custodied, local key</span>');
+    await wait(400);
+    tline('$ retry with PAYMENT-SIGNATURE &rarr;','dim');
+    var d;
+    try{var res=await p;d=await res.json();
+      if(!res.ok){tline((d&&d.error)||'demo unavailable — try again shortly','s402');btn.disabled=false;return;}
+    }catch(e){tline('demo unavailable — try again shortly','s402');btn.disabled=false;return;}
+    tline('HTTP/1.1 200 OK &middot; settled in '+d.elapsed_s+'s &middot; fees: 0','s200');
+    tline('block <a href="'+d.explorer+'" target="_blank" rel="noopener">'+d.hash.slice(0,18)+'&hellip;</a> '+(d.confirmed?'confirmed ✓':'propagating&hellip;'),'');
+    tline('&nbsp;');
+    tline('&darr; paywall dissolved — article released','dim');
+    pw.classList.add('gone');
+    await wait(600);
+    var art=d.article||{};var html='';
+    (art.body||[]).forEach(function(par){html+='<p>'+par+'</p>'});
+    zone.outerHTML=html;
+    var lg=d.ledger;
+    if(lg){lbox.innerHTML='<div class="ledger"><div class="lhead">View from the ledger — nano:mainnet</div>'
+      +'<div class="lrow"><span class="k">block</span><span class="v"><a href="'+d.explorer+'" target="_blank" rel="noopener">'+lg.hash+'</a></span></div>'
+      +'<div class="lrow"><span class="k">type</span><span class="v">'+lg.type+'</span></div>'
+      +'<div class="lrow"><span class="k">amount</span><span class="v">'+lg.amount_xno+' XNO</span></div>'
+      +'<div class="lrow"><span class="k">from</span><span class="v">'+trunc(lg.from)+' <span class="k">(demo agent)</span></span></div>'
+      +'<div class="lrow"><span class="k">to</span><span class="v">'+trunc(lg.to)+' <span class="k">(treasury)</span></span></div>'
+      +'<div class="lrow"><span class="k">status</span><span class="v ok">'+(lg.confirmed?'CONFIRMED ✓':'propagating…')+'</span></div>'
+      +'<div class="lrow"><span class="k">verify</span><span class="v"><a href="'+d.explorer+'" target="_blank" rel="noopener">open in public explorer ↗</a></span></div></div>';}
+  });
+})();
+(function(){
+  var b=document.getElementById('cmpbtn'),out=document.getElementById('cmpout');
+  if(!b)return;
+  var NAMES={'base':'USDC on Base','solana':'USDC on Solana','nano:mainnet':'Nano (XNO)',
+             'nano-mainnet':'Nano (XNO)','bitcoin-lightning':'BTC Lightning'};
+  function usd(x){return x==null?'–':'$'+Number(x).toFixed(7)}
+  b.addEventListener('click',async function(){
+    b.disabled=true;out.innerHTML='<div class="cmpnote">asking nano-gpt.com for a quote…</div>';
+    try{
+      var res=await fetch('/demo/compare');var d=await res.json();
+      if(!res.ok){out.innerHTML='<div class="cmpnote">'+(d.error||'live quote unavailable — try again shortly')+'</div>';b.disabled=false;return;}
+      var rows=(d.rows||[]).slice().sort(function(a,c){return (a.usd||0)-(c.usd||0)});
+      var minUsd=rows.length?rows[0].usd:0;
+      var html='<div class="tablewrap" style="margin-top:.8rem"><table><tr><th>Rail</th><th>The agent sends</th><th>Cost</th><th>vs true price</th></tr>';
+      rows.forEach(function(r){
+        var name=NAMES[r.network]||r.network;
+        var floored=r.markup&&r.markup>5;
+        var best=r.usd&&minUsd&&r.usd<=minUsd*1.35;
+        var cls=floored?' class="floorrow"':(best?' class="bestrow"':'');
+        var vs=floored?(r.markup.toLocaleString()+'× — price floor'):(r.markup?r.markup+'×':'–');
+        html+='<tr'+cls+'><td>'+name+'</td><td class="num">'+(r.payer_sends||'–')+'</td><td class="num">'+usd(r.usd)+'</td><td class="num">'+vs+'</td></tr>';
+      });
+      html+='</table></div><div class="cmpnote">live 402 quote · '+(d.source||'')
+        +' · fetched '+new Date((d.fetched_unix||0)*1000).toLocaleTimeString()
+        +(d.cached?' (cached)':'')+' · an agent reads this table in a microsecond — and picks the bottom of the Cost column</div>';
+      out.innerHTML=html;
+    }catch(e){out.innerHTML='<div class="cmpnote">live quote unavailable — try again shortly</div>';}
+    b.disabled=false;
+  });
+})();
+(async function(){
+  var note=document.getElementById('sbs-note');
+  if(!note)return;
+  try{
+    var g=await (await fetch('/demo/gas')).json();
+    if(g&&g.usdc_settlement_fee_usd!=null){
+      var fee=g.usdc_settlement_fee_usd;
+      document.getElementById('sbs-gas').textContent='≈ $'+fee.toFixed(5)+' — paid by the facilitator, recovered in the floor';
+      document.getElementById('sbs-live').textContent='(live: '+g.base_gas_gwei+' gwei · ETH $'+Math.round(g.eth_usd).toLocaleString()+')';
+      note.textContent='live: Base gas '+g.base_gas_gwei+' gwei × ~'+(g.gas_units_est/1000)+'k gas × ETH $'
+        +Math.round(g.eth_usd).toLocaleString()+' ≈ $'+fee.toFixed(5)
+        +' per USDC settlement — there is your $0.001 floor. Fetched '
+        +new Date(g.fetched_unix*1000).toLocaleTimeString()+(g.cached?' (cached ≤10 min)':'')
+        +'. Approximation: L2 execution only; L1 data fees add a little more.';
+    }
+  }catch(e){note.textContent='live gas unavailable right now — the floor math still holds: fees can’t go below the cost of moving the token.';}
+  try{
+    var c=await (await fetch('/demo/compare')).json();
+    var nano=(c.rows||[]).filter(function(r){return (r.network||'').indexOf('nano')===0});
+    if(nano.length&&nano[0].usd!=null){
+      var m=nano[0].usd;
+      var mtxt='$'+m.toFixed(7);
+      document.querySelectorAll('.sbs-metered').forEach(function(el){el.textContent=mtxt});
+      document.getElementById('sbs-10kB').textContent='$'+(m*10000).toFixed(2);
+    }
+  }catch(e){}
+})();
+</script>

@@ -1,3 +1,5 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Docs — Feeless402</title>
 <style>
   :root {
@@ -7,14 +9,9 @@
     --mono: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Menlo, Consolas, monospace;
     --serif: Charter, "Iowan Old Style", "Palatino Linotype", Georgia, serif;
   }
-  @media (prefers-color-scheme: dark) {
-    :root { --paper: #11150f; --panel: #181d16; --ink: #e2e8e0; --ink-soft: #98a396;
-      --line: #2a3328; --accent: #35c07f; --accent-ink: #4fd394; --amber: #d9a032;
-      --term-bg: #0c100c; --term-ink: #cfdcd2; --term-dim: #6f8073; }
-  }
   :root[data-theme="light"] { --paper:#f3f5f7; --panel:#fff; --ink:#1c2420; --ink-soft:#55605a; --line:#d8dedb; --accent:#0d8a58; --accent-ink:#0a6b45; --amber:#b97d10; --term-bg:#182019; --term-ink:#d7e4da; --term-dim:#7d8f84; }
-  :root[data-theme="dark"] { --paper:#11150f; --panel:#181d16; --ink:#e2e8e0; --ink-soft:#98a396; --line:#2a3328; --accent:#35c07f; --accent-ink:#4fd394; --amber:#d9a032; --term-bg:#0c100c; --term-ink:#cfdcd2; --term-dim:#6f8073; }
   * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
   body { margin: 0; background: var(--paper); color: var(--ink);
     font-family: var(--serif); font-size: 17px; line-height: 1.65; }
   main { max-width: 44rem; margin: 0 auto; padding: 0 1.25rem 5rem; }
@@ -22,7 +19,7 @@
   .brand { font-family: var(--mono); font-size: .95rem; }
   .brand a { color: inherit; text-decoration: none; }
   .brand b { color: var(--accent-ink); }
-  nav { font-family: var(--mono); font-size: .78rem; display: flex; gap: 1.1rem; }
+  nav { font-family: var(--mono); font-size: .78rem; display: flex; gap: 1.1rem; flex-wrap: wrap; }
   a { color: var(--accent-ink); text-underline-offset: 3px; }
   .rail { border: 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); height: 4px; margin: 2.2rem 0; }
   h1 { font-size: 1.9rem; font-weight: 600; margin: 2rem 0 .6rem; text-wrap: balance; }
@@ -41,10 +38,17 @@
   td:first-child { font-family: var(--mono); font-size: .82rem; white-space: nowrap; }
   .tablewrap { overflow-x: auto; }
   .warn { border-left: 3px solid var(--amber); background: var(--panel); padding: .8rem 1rem; border-radius: 0 8px 8px 0; font-size: .95rem; }
+
+  /* phones */
+  @media (max-width: 640px) {
+    h1 { font-size: 1.55rem; }
+    h2 { font-size: 1.18rem; }
+    pre { padding: .75rem .8rem; }
+    th, td { padding: .45rem .5rem; }
+  }
 </style>
 <main>
   <header>
-<meta charset="utf-8">
     <div class="brand"><a href="/"><b>feeless402</b></a> / docs</div>
     <nav><a href="/">Home</a><a href="/docs.html">Docs</a><a href="/faucet.html">Faucet</a><a href="/stats">Stats</a><a href="https://railhint.com" target="_blank" rel="noopener">Spec</a><a href="/llms.txt">llms.txt</a></nav>
   </header>
