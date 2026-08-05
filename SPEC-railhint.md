@@ -97,3 +97,11 @@ to *both* transact and onboard.
 - Live demo rail: XNO (Nano) — zero network fees, no price floor,
   sub-second finality; but railHint itself is rail-agnostic: a server
   could equally hint Lightning or any future scheme.
+
+## Acknowledgements
+
+- **u/xnoforge** — argued that "discovery, not authority" belonged at the
+  front of this document rather than in Security Considerations, on the
+  grounds that shell commands riding inside a 402 is the first thing a
+  standards reviewer will challenge. The "Discovery, not execution"
+  section above is the result.
