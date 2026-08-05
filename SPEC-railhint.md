@@ -3,6 +3,22 @@
 **Status:** Draft v0.1 · **Intended venue:** x402 community extensions
 **Requires:** x402 v2 (`extensions` field) · **Vendor-neutral:** yes
 
+## Design principle: discovery, not execution
+
+`railHint` is **advisory metadata, never an instruction**. `accepts` stays
+the sole binding term of the payment; a client that ignores `railHint`
+loses nothing but information. Fields that name commands or endpoints
+(`bootstrap`, `topup`, `faucets`) are **untrusted remote input** in exactly
+the sense a URL in an HTTP body is: they tell a client *where to look*,
+not what to run. A conforming client MUST NOT execute them blindly, and a
+conforming server MUST NOT depend on their execution — a hint that only
+"works" when its shell command is run is out of spec.
+
+This is the property that keeps rail negotiation inside the existing 402
+handshake without turning a payment-required response into a remote-code
+channel. Everything else in this document follows from it; the concrete
+client and server obligations are in [Security considerations](#security-considerations).
+
 ## Problem
 
 x402 lets a server offer multiple payment options in `accepts`, but gives
