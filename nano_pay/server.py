@@ -77,6 +77,56 @@ def _save_ledger(led):
     os.replace(tmp, FAUCET_LEDGER)
 
 
+PAID_CALLS = DEFAULT_DIR / "paid-calls.json"
+
+
+def _self_addresses() -> set:
+    """Our own Nano addresses — main + test wallets, outside the repo."""
+    try:
+        return {l.strip() for l in
+                (DEFAULT_DIR / "self-addresses.txt").read_text().splitlines()
+                if l.strip() and not l.startswith("#")}
+    except Exception:
+        return set()
+
+
+def _count_paid_call(payer: str, demo_address: str) -> None:
+    """Tally a settled payment by who paid. Never raises — a bookkeeping
+    failure must not affect a payment that already settled on-chain."""
+    try:
+        if payer == demo_address:
+            bucket = "demo"          # our homepage unlock button
+        elif payer in _self_addresses():
+            bucket = "self"          # our own test wallets
+        else:
+            bucket = "external"      # a stranger actually paid us
+        try:
+            d = json.loads(PAID_CALLS.read_text())
+        except Exception:
+            d = {}
+        d[bucket] = int(d.get(bucket, 0)) + 1
+        d["last_unix"] = time.time()
+        if bucket == "external":
+            d["last_external_unix"] = time.time()
+        tmp = PAID_CALLS.with_name(PAID_CALLS.name + ".tmp")
+        tmp.write_text(json.dumps(d))
+        os.replace(tmp, PAID_CALLS)
+    except Exception:
+        pass
+
+
+def _paid_calls() -> dict:
+    try:
+        d = json.loads(PAID_CALLS.read_text())
+        return {"external": int(d.get("external", 0)),
+                "demo": int(d.get("demo", 0)),
+                "self_test": int(d.get("self", 0)),
+                "last_external_unix": d.get("last_external_unix")}
+    except Exception:
+        return {"external": None, "demo": None, "self_test": None,
+                "last_external_unix": None}
+
+
 def _self_ips() -> set:
     """Operator self-traffic IPs — loopback plus ~/.nano-pay/self-ips.txt."""
     ips = {"127.0.0.1", "::1", "localhost", "unknown", ""}
@@ -257,7 +307,11 @@ def _stats_data():
                          lambda: round(float(raw_to_xno(sum(
                              int(a) for a in rpc.receivable(
                                  server_wallet.address).values()))), 6)),
-                     "price_per_call_xno": float(PRICE_XNO)},
+                     "price_per_call_xno": float(PRICE_XNO),
+                     # Paid calls split by who paid: strangers vs our own
+                     # homepage demo vs our test wallets. The treasury
+                     # balance alone reads as revenue when it mostly isn't.
+                     "paid_calls": _paid_calls()},
         "downloads": {
             "pypi": _cached("pypi", 21600, _pypi_downloads),
             "github": _cached("github", 3600, _github_stats),
@@ -367,7 +421,9 @@ STATS_HTML = """<title>Stats — Feeless402</title>
 
   <h2>Settlement</h2>
   <div class="grid">
-    <div class="tile"><div class="num" id="t_bal">&ndash;</div><div class="lbl">treasury balance (XNO earned)</div></div>
+    <div class="tile"><div class="num" id="p_ext">&ndash;</div><div class="lbl">paid calls by strangers</div></div>
+    <div class="tile"><div class="num" id="p_demo">&ndash;</div><div class="lbl">homepage demo unlocks (we pay those)</div></div>
+    <div class="tile"><div class="num" id="t_bal">&ndash;</div><div class="lbl">treasury balance (XNO, incl. our own demo)</div></div>
     <div class="tile"><div class="num" id="t_price">&ndash;</div><div class="lbl">price per call (XNO)</div></div>
   </div>
 
@@ -387,6 +443,7 @@ async function load(){
   const p=d.pypi||{},c=d.clawhub||{},g=d.github||{};
   n2('d_pypi',p.last_month);n2('d_pypi_d',p.last_day);
   n2('d_claw',c.downloads!=null?c.downloads:c.installs_60d);n2('d_gh',g.stars);
+  var pc=t.paid_calls||{};n2('p_ext',pc.external);n2('p_demo',pc.demo);
   document.getElementById('t_bal').textContent=(t.balance_xno==null&&t.receivable_xno==null)?'–':xno((t.balance_xno||0)+(t.receivable_xno||0));
   document.getElementById('t_price').textContent=xno(t.price_per_call_xno);
   const gen=new Date((s.generated_unix||Date.now()/1000)*1000);
@@ -494,6 +551,7 @@ def create_app() -> FastAPI:
                 block, price_raw, server_wallet.address, rpc
             )
             receipt = settle_block(block, rpc)
+            _count_paid_call(payer, demo_wallet.address)
         except PaymentInvalid as e:
             return JSONResponse(
                 {"error": f"payment invalid: {e}"}, status_code=402
@@ -592,8 +650,10 @@ def create_app() -> FastAPI:
                     {"error": "payment invalid: malformed block"},
                     status_code=402,
                 )
-            verify_block(block, price_raw, server_wallet.address, rpc)
+            demo_payer = verify_block(
+                block, price_raw, server_wallet.address, rpc)
             receipt = settle_block(block, rpc)
+            _count_paid_call(demo_payer, demo_wallet.address)
         except PaymentInvalid as e:
             return JSONResponse(
                 {"error": f"payment invalid: {e}"}, status_code=402
