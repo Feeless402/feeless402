@@ -34,6 +34,7 @@ DOCS_URL = os.environ.get(
 PRICE_XNO = os.environ.get("F402_PRICE_XNO", "0.0001")
 FAUCET_XNO = os.environ.get("F402_FAUCET_XNO", "0.005")
 FAUCET_PER_IP_PER_DAY = int(os.environ.get("F402_FAUCET_PER_IP_PER_DAY", "3"))
+FAUCET_GLOBAL_PER_HOUR = int(os.environ.get("F402_FAUCET_GLOBAL_PER_HOUR", "12"))
 FAUCET_POW = os.environ.get("F402_FAUCET_POW", "0") == "1"
 # Sibling faucets advertised in railHint — the federation list. Comma-sep.
 FAUCET_FEDERATION = [
@@ -1079,6 +1080,32 @@ def create_app() -> FastAPI:
                                        f"integration, ask: {DOCS_URL}/issues"},
                 status_code=429,
                 headers={"Retry-After": str(max(1, int(frees_at - time.time())))},
+            )
+
+        # Global budget: the faucet as a whole serves at most N claims per
+        # rolling hour, regardless of who is asking. Per-IP and per-address
+        # rules rotate away for free against a proxy pool (Aug 6 farm:
+        # 100+ claims/hour from unique IPs, identical UA); this is the one
+        # limit that can't. Counted straight from ledger timestamps, so it
+        # needs no extra state and survives restarts.
+        hour_ago = time.time() - 3600
+        hour_claims = sorted(
+            t for t in led["addresses"].values() if t > hour_ago)
+        if len(hour_claims) >= FAUCET_GLOBAL_PER_HOUR:
+            frees_at = hour_claims[0] + 3600
+            wait = max(1, int(frees_at - time.time()))
+            return JSONResponse(
+                {"error": "faucet hourly budget used up — try again shortly",
+                 "limit_per_hour_global": FAUCET_GLOBAL_PER_HOUR,
+                 "retry_after_seconds": wait,
+                 "retry_at_utc": time.strftime(
+                     "%Y-%m-%dT%H:%M:%SZ", time.gmtime(frees_at)),
+                 "note": "shared across all users; separately, each address "
+                         "may claim once ever",
+                 "building_something": "if the budget keeps blocking a real "
+                                       f"integration, ask: {DOCS_URL}/issues"},
+                status_code=429,
+                headers={"Retry-After": str(wait)},
             )
 
         amount = xno_to_raw(FAUCET_XNO)
