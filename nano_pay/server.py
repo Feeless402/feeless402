@@ -889,14 +889,35 @@ def create_app() -> FastAPI:
         led = _ledger()
         if address in led["addresses"]:
             return JSONResponse(
-                {"error": "address already claimed its starter XNO"},
+                {"error": "address already claimed its starter XNO",
+                 "note": "one claim per address, ever — generate a new "
+                         "address to claim again",
+                 "next": f"holding XNO already? retry {SITE_URL}/premium"},
                 status_code=429,
             )
         ip = _client_ip(request)
         day_ago = time.time() - 86400
         recent = [t for t in led["ips"].get(ip, []) if t > day_ago]
         if len(recent) >= FAUCET_PER_IP_PER_DAY:
-            return JSONResponse({"error": "IP daily limit reached"}, status_code=429)
+            # Say what the limit is, when it lifts, and what to do meanwhile —
+            # an integrator testing in a loop deserves better than "no".
+            frees_at = min(recent) + 86400
+            return JSONResponse(
+                {"error": "daily faucet allotment used up for this IP",
+                 "limit_per_ip_per_day": FAUCET_PER_IP_PER_DAY,
+                 "claims_used_last_24h": len(recent),
+                 "retry_after_seconds": max(1, int(frees_at - time.time())),
+                 "retry_at_utc": time.strftime(
+                     "%Y-%m-%dT%H:%M:%SZ", time.gmtime(frees_at)),
+                 "note": "rolling 24h window per IP; separately, each address "
+                         "may claim once ever",
+                 "next": "already holding starter XNO? just retry the paid "
+                         f"endpoint: {SITE_URL}/premium",
+                 "building_something": "if you need a bigger allowance for an "
+                                       f"integration, ask: {DOCS_URL}/issues"},
+                status_code=429,
+                headers={"Retry-After": str(max(1, int(frees_at - time.time())))},
+            )
 
         amount = xno_to_raw(FAUCET_XNO)
 
