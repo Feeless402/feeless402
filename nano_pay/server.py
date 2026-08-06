@@ -559,8 +559,12 @@ def create_app() -> FastAPI:
                 demo_wallet.receive_all(rpc, prework=False)
                 if demo_wallet.synced_account(rpc).raw_bal < 20 * price_raw:
                     with FAUCET_LOCK:
-                        faucet_wallet.send(
-                            rpc, demo_wallet.address, 200 * price_raw)
+                        fh = faucet_wallet.send(
+                            rpc, demo_wallet.address, 200 * price_raw,
+                            prework=False)
+                    threading.Thread(
+                        target=lambda: faucet_wallet.prework(fh, rpc),
+                        daemon=True).start()
                     demo_wallet.receive_all(rpc, prework=False)
                 acct = demo_wallet.synced_account(rpc)
                 demo_wallet.prework(demo_wallet._work_root(acct), rpc)
@@ -681,8 +685,12 @@ def create_app() -> FastAPI:
                     if demo_wallet.synced_account(
                             rpc).raw_bal < 20 * price_raw:
                         with FAUCET_LOCK:
-                            faucet_wallet.send(
-                                rpc, demo_wallet.address, 200 * price_raw)
+                            fh = faucet_wallet.send(
+                                rpc, demo_wallet.address, 200 * price_raw,
+                                prework=False)
+                        threading.Thread(
+                            target=lambda: faucet_wallet.prework(fh, rpc),
+                            daemon=True).start()
                         demo_wallet.receive_all(rpc, prework=False)
                     acct = demo_wallet.synced_account(rpc)
                     demo_wallet.prework(demo_wallet._work_root(acct), rpc)
@@ -904,7 +912,10 @@ def create_app() -> FastAPI:
                 faucet_wallet.load()
                 # pocket any pending refills first
                 faucet_wallet.receive_all(rpc, prework=False)
-                h = faucet_wallet.send(rpc, address, amount)
+                # prework=False: computing the NEXT block's PoW takes minutes
+                # on this VPS. Doing it here would hold the lock and the
+                # client's connection long after their XNO was already sent.
+                h = faucet_wallet.send(rpc, address, amount, prework=False)
                 led2["addresses"][address] = time.time()
                 led2["ips"].setdefault(ip, []).append(time.time())
                 _save_ledger(led2)
@@ -923,6 +934,12 @@ def create_app() -> FastAPI:
                 {"error": "address already claimed its starter XNO"},
                 status_code=429,
             )
+        # Warm the next claim's PoW off the request path. No lock needed:
+        # prework only computes and caches work, it never signs or
+        # broadcasts a block.
+        threading.Thread(
+            target=lambda: faucet_wallet.prework(h, rpc), daemon=True
+        ).start()
         return {
             "sent_xno": FAUCET_XNO,
             "to": address,
