@@ -32,7 +32,10 @@ DOCS_URL = os.environ.get(
     "F402_DOCS_URL", "https://github.com/feeless402/feeless402"
 )
 PRICE_XNO = os.environ.get("F402_PRICE_XNO", "0.0001")
-FAUCET_XNO = os.environ.get("F402_FAUCET_XNO", "0.005")
+FAUCET_XNO = os.environ.get("F402_FAUCET_XNO", "0.0005")
+FAUCET_TOPUP_XNO = os.environ.get("F402_FAUCET_TOPUP_XNO", "0.0045")
+# When the grant size last changed, so dispensed-history math stays honest.
+FAUCET_RATE_CHANGES = [(0.0, 0.005), (1786021000.0, float(FAUCET_XNO))]
 FAUCET_PER_IP_PER_DAY = int(os.environ.get("F402_FAUCET_PER_IP_PER_DAY", "3"))
 FAUCET_GLOBAL_PER_HOUR = int(os.environ.get("F402_FAUCET_GLOBAL_PER_HOUR", "12"))
 FAUCET_POW = os.environ.get("F402_FAUCET_POW", "0") == "1"
@@ -112,6 +115,44 @@ def _count_paid_call(payer: str, demo_address: str) -> None:
         tmp = PAID_CALLS.with_name(PAID_CALLS.name + ".tmp")
         tmp.write_text(json.dumps(d))
         os.replace(tmp, PAID_CALLS)
+    except Exception:
+        pass
+
+
+def _maybe_graduate(payer: str) -> None:
+    """First real x402 payment from a faucet claimant quietly tops their
+    starter grant up to a full allowance. Never raises, never blocks the
+    payment response; the send runs in its own thread under FAUCET_LOCK.
+
+    Deliberately unadvertised on every user-facing surface: the paid call
+    itself is the proof of a real integration. Anything a farm could read
+    about, a farm would imitate — this way imitation means actually using
+    the rail, which is the point.
+    """
+    try:
+        if payer == demo_wallet.address or payer in _self_addresses():
+            return
+        led = _ledger()
+        if payer not in led["addresses"] or payer in led.get("graduated", {}):
+            return
+
+        def _send():
+            try:
+                with FAUCET_LOCK:
+                    led2 = _ledger()
+                    if payer in led2.setdefault("graduated", {}):
+                        return
+                    faucet_wallet.load()
+                    faucet_wallet.receive_all(rpc, prework=False)
+                    faucet_wallet.send(
+                        rpc, payer, xno_to_raw(FAUCET_TOPUP_XNO),
+                        prework=False)
+                    led2["graduated"][payer] = time.time()
+                    _save_ledger(led2)
+            except Exception:
+                pass
+
+        threading.Thread(target=_send, daemon=True).start()
     except Exception:
         pass
 
@@ -359,7 +400,10 @@ def _stats_data():
             "claims_total": len(ext_times),
             "claims_24h": sum(1 for t in ext_times if t > day_ago),
             "self_test_claims": len(claims) - len(ext_times),
-            "xno_dispensed": round(len(claims) * per_claim, 6),
+            "xno_dispensed": round(sum(
+                next(rate for start, rate in reversed(FAUCET_RATE_CHANGES)
+                     if t >= start)
+                for t in ts_list), 6),
             "xno_per_claim": per_claim,
             "balance_xno": faucet_bal,
             "claims_remaining": (
@@ -644,6 +688,7 @@ def create_app() -> FastAPI:
             )
             receipt = settle_block(block, rpc)
             _count_paid_call(payer, demo_wallet.address)
+            _maybe_graduate(payer)
         except PaymentInvalid as e:
             return JSONResponse(
                 {"error": f"payment invalid: {e}"}, status_code=402
@@ -1092,7 +1137,10 @@ def create_app() -> FastAPI:
         hour_claims = sorted(
             t for t in led["addresses"].values() if t > hour_ago)
         if len(hour_claims) >= FAUCET_GLOBAL_PER_HOUR:
-            frees_at = hour_claims[0] + 3600
+            # Honest Retry-After: the moment the in-window count drops BELOW
+            # the cap — not when the single oldest claim ages out, which
+            # after a burst frees no capacity at all.
+            frees_at = hour_claims[len(hour_claims) - FAUCET_GLOBAL_PER_HOUR] + 3600
             wait = max(1, int(frees_at - time.time()))
             return JSONResponse(
                 {"error": "faucet hourly budget used up — try again shortly",

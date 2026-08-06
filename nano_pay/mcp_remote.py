@@ -24,7 +24,7 @@ from .rpc import RPC
 from .x402 import collect_offers, compare_rails, offer_amount_raw, parse_quote, pick_nano_offer
 
 FAUCET_ADDR = "nano_1hk1cu3773u5r39e75mtqrauzro75j3hwdzyewz8izokzur66semy739w14h"
-FAUCET_CLAIM_XNO = "0.005"
+FAUCET_CLAIM_XNO = "0.0005"
 
 INSTRUCTIONS = """Read-only demo of the Feeless402 rail: price any x402
 (HTTP 402 Payment Required) API across payment rails and see what the
@@ -156,7 +156,7 @@ def faucet_info() -> str:
             "rules": "one claim per address ever; 3 per IP per day; proof-of-work required",
             "how_to_claim": "pip install feeless402; nano-pay claim https://feeless402.com "
             "(or the faucet_claim tool of the LOCAL MCP server: nano-pay mcp)",
-            "donations": f"send XNO to {FAUCET_ADDR} — every 0.005 onboards another agent",
+            "donations": f"send XNO to {FAUCET_ADDR} — every 0.0005 onboards another agent",
         }
     )
 
