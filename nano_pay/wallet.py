@@ -13,6 +13,8 @@ Design notes:
 
 import json
 import os
+import tempfile
+import threading
 from pathlib import Path
 
 import nanopy
@@ -34,6 +36,7 @@ class Wallet:
     def __init__(self, path: Path = None):
         self.path = Path(path) if path else DEFAULT_DIR / "wallet.json"
         self.data = None
+        self._save_lock = threading.Lock()
 
     # ---------- persistence ----------
 
@@ -65,10 +68,26 @@ class Wallet:
         return self
 
     def _save(self):
-        tmp = self.path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(self.data, indent=2))
-        os.chmod(tmp, 0o600)
-        tmp.replace(self.path)
+        # Concurrent saves (send path + work-precompute thread) once interleaved
+        # on a shared .tmp name and promoted a mangled file — lock the whole
+        # write and give each save its own temp file.
+        with self._save_lock:
+            fd, tmp = tempfile.mkstemp(
+                dir=self.path.parent, prefix=self.path.name + ".", suffix=".tmp"
+            )
+            try:
+                with os.fdopen(fd, "w") as f:
+                    f.write(json.dumps(self.data, indent=2))
+                    f.flush()
+                    os.fsync(f.fileno())
+                os.chmod(tmp, 0o600)
+                os.replace(tmp, self.path)
+            except BaseException:
+                try:
+                    os.unlink(tmp)
+                except OSError:
+                    pass
+                raise
 
     # ---------- account / state ----------
 
