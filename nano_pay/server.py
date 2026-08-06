@@ -1013,13 +1013,24 @@ def create_app() -> FastAPI:
 
         led = _ledger()
         if address in led["addresses"]:
-            return JSONResponse(
-                {"error": "address already claimed its starter XNO",
-                 "note": "one claim per address, ever — generate a new "
-                         "address to claim again",
-                 "next": f"holding XNO already? retry {SITE_URL}/premium"},
-                status_code=429,
-            )
+            body = {"error": "address already claimed its starter XNO",
+                    "note": "one claim per address, ever — generate a new "
+                            "address to claim again",
+                    "next": f"holding XNO already? retry {SITE_URL}/premium"}
+            # If their grant is still sitting unpocketed, that is almost
+            # certainly why they are back: their client gave up before we
+            # answered. Tell them the money is already theirs.
+            try:
+                pend = rpc.receivable(address)
+                if pend:
+                    total = raw_to_xno(sum(int(a) for a in pend.values()))
+                    body["good_news"] = (
+                        f"we already sent you {total} XNO and it is waiting "
+                        "unpocketed in this address — run `nano-pay receive` "
+                        "to put it in your balance. Nothing more to claim.")
+            except Exception:
+                pass
+            return JSONResponse(body, status_code=429)
         ip = _client_ip(request)
         day_ago = time.time() - 86400
         recent = [t for t in led["ips"].get(ip, []) if t > day_ago]
@@ -1080,6 +1091,26 @@ def create_app() -> FastAPI:
                 {"error": "address already claimed its starter XNO"},
                 status_code=429,
             )
+        # Wait briefly for the send to confirm before answering. Clients
+        # typically ask for their pending block the moment we reply, and if
+        # it hasn't propagated they see "received nothing" and a zero
+        # balance — which reads as a broken faucet. The old 2.5-minute reply
+        # hid this by accident; now we hold the response for up to ~5s
+        # instead, which also fixes already-installed clients.
+        def _await_confirm():
+            for _ in range(10):
+                try:
+                    info = rpc.call({"action": "block_info",
+                                     "json_block": "true", "hash": h})
+                    if str(info.get("confirmed")).lower() == "true":
+                        return
+                except Exception:
+                    pass
+                time.sleep(0.5)
+        try:
+            await anyio.to_thread.run_sync(_await_confirm)
+        except Exception:
+            pass
         # Warm the next claim's PoW off the request path. No lock needed:
         # prework only computes and caches work, it never signs or
         # broadcasts a block.
