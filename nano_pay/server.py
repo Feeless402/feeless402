@@ -1167,6 +1167,16 @@ def create_app() -> FastAPI:
                 led2 = _ledger()
                 if address in led2["addresses"]:
                     return None
+                # Re-check the global budget now that we hold the lock: a
+                # burst can push many requests past the pre-lock check while
+                # earlier sends are still queued here (Aug 6: 5 claims slipped
+                # through a 3/hour cap exactly this way).
+                cutoff = time.time() - 3600
+                inwin = sorted(t for t in led2["addresses"].values()
+                               if t > cutoff)
+                if len(inwin) >= FAUCET_GLOBAL_PER_HOUR:
+                    return ("budget",
+                            inwin[len(inwin) - FAUCET_GLOBAL_PER_HOUR] + 3600)
                 faucet_wallet.load()
                 # pocket any pending refills first
                 faucet_wallet.receive_all(rpc, prework=False)
@@ -1191,6 +1201,17 @@ def create_app() -> FastAPI:
             return JSONResponse(
                 {"error": "address already claimed its starter XNO"},
                 status_code=429,
+            )
+        if isinstance(h, tuple) and h[0] == "budget":
+            wait = max(1, int(h[1] - time.time()))
+            return JSONResponse(
+                {"error": "faucet hourly budget used up — try again shortly",
+                 "limit_per_hour_global": FAUCET_GLOBAL_PER_HOUR,
+                 "retry_after_seconds": wait,
+                 "note": "shared across all users; separately, each address "
+                         "may claim once ever"},
+                status_code=429,
+                headers={"Retry-After": str(wait)},
             )
         # Wait briefly for the send to confirm before answering. Clients
         # typically ask for their pending block the moment we reply, and if
