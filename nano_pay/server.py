@@ -252,7 +252,30 @@ def payment_required_body(price_raw: int, pay_to: str, resource: str) -> dict:
 
 
 # ---------- live usage stats ----------
-_STATS_CACHE = {}
+STATS_CACHE_FILE = DEFAULT_DIR / "stats-cache.json"
+
+
+def _load_stats_cache():
+    """Survive restarts. In-memory only meant every restart (and the daily
+    18:00Z reboot) blanked every upstream stat until the next successful
+    fetch — and upstreams like pypistats 429 exactly when you retry."""
+    try:
+        return {k: tuple(v) for k, v in
+                json.loads(STATS_CACHE_FILE.read_text()).items()}
+    except Exception:
+        return {}
+
+
+_STATS_CACHE = _load_stats_cache()
+
+
+def _persist_stats_cache():
+    try:
+        tmp = STATS_CACHE_FILE.with_name(STATS_CACHE_FILE.name + ".tmp")
+        tmp.write_text(json.dumps(_STATS_CACHE))
+        os.replace(tmp, STATS_CACHE_FILE)
+    except Exception:
+        pass
 
 
 def _cached(key, ttl, fn, fail_ttl=300):
@@ -267,8 +290,11 @@ def _cached(key, ttl, fn, fail_ttl=300):
         val = fn()
         _STATS_CACHE[key] = (now, val, ttl)
     except Exception:
+        # Keep the last good value across restarts, but let its age show:
+        # a stale figure is better than a blank one, a wrong one is not.
         val = hit[1] if hit else None
         _STATS_CACHE[key] = (now, val, fail_ttl)
+    _persist_stats_cache()
     return val
 
 
