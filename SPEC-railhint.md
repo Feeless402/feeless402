@@ -14,6 +14,13 @@ not what to run. A conforming client MUST NOT execute them blindly, and a
 conforming server MUST NOT depend on their execution — a hint that only
 "works" when its shell command is run is out of spec.
 
+The same boundary applies to numbers: `railHint` is **not a price oracle
+or fee-comparison matrix**. `cheapest` and `why` annotate the server's
+*own* offers — claims a client can verify against the amounts already
+binding in `accepts` — never live market data or fee breakdowns for
+third-party networks. A client SHOULD treat any cost claim it cannot
+check against `accepts` as advertising and do its own arithmetic.
+
 This is the property that keeps rail negotiation inside the existing 402
 handshake without turning a payment-required response into a remote-code
 channel. Everything else in this document follows from it; the concrete

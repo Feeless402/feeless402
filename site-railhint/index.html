@@ -66,6 +66,13 @@
   <strong>untrusted remote input</strong>, exactly as a URL in an HTTP body is:
   a client MUST NOT act on them blindly, and a server MUST NOT depend on their
   execution &mdash; a hint that only works when its command is run is out of spec.</p>
+  <p>The same boundary applies to numbers: railHint is <strong>not a price
+  oracle or fee-comparison matrix</strong>. <code>cheapest</code> and
+  <code>why</code> annotate the server's <em>own</em> offers &mdash; claims a
+  client can verify against the amounts already binding in
+  <code>accepts</code> &mdash; never live market data or fee breakdowns for
+  third-party networks. A client SHOULD treat any cost claim it cannot check
+  against <code>accepts</code> as advertising and do its own arithmetic.</p>
   <p>This is deliberate. Rail negotiation belongs inside the existing 402
   handshake, and a payment-required response must never become a remote-code
   channel. The obligations this places on clients and servers are detailed in
