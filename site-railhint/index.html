@@ -58,6 +58,19 @@
   that do not understand the extension ignore it; the <code>accepts</code>
   array remains the only binding payment terms.</p>
 
+  <h2>Design principle: discovery, not execution</h2>
+  <p>A railHint tells a client <em>where to look</em>, never <em>what to run</em>.
+  <code>accepts</code> is the sole binding term of the payment; a client that
+  ignores the hint loses information and nothing else. Fields naming commands or
+  endpoints (<code>bootstrap</code>, <code>topup</code>, <code>faucets</code>) are
+  <strong>untrusted remote input</strong>, exactly as a URL in an HTTP body is:
+  a client MUST NOT act on them blindly, and a server MUST NOT depend on their
+  execution &mdash; a hint that only works when its command is run is out of spec.</p>
+  <p>This is deliberate. Rail negotiation belongs inside the existing 402
+  handshake, and a payment-required response must never become a remote-code
+  channel. The obligations this places on clients and servers are detailed in
+  <a href="#security">Security considerations</a>.</p>
+
   <h2>Motivation</h2>
   <p>Autonomous clients select payment rails by arithmetic, but today the
   information needed to switch rails — comparative cost, client software,
@@ -123,7 +136,7 @@
   keep <code>why</code> current with real prices — stale or exaggerated
   rationales are trivially falsified by clients comparing offers.</p>
 
-  <h2>Security considerations</h2>
+  <h2 id="security">Security considerations</h2>
   <p><code>bootstrap</code> and <code>topup</code> are untrusted remote
   input. A client <span class="rfc2119">must not</span> execute them
   blindly; it <span class="rfc2119">should</span> (a) act only on schemes
@@ -147,4 +160,21 @@
   The JSON Schema at
   <a href="/railhint.schema.json">railhint.com/railhint.schema.json</a>
   is versioned with this draft.</p>
+
+  <h2>Acknowledgements</h2>
+  <p>Thanks to <strong>u/xnoforge</strong>, who reviewed the reference
+  implementation and argued that &ldquo;discovery, not authority&rdquo;
+  belonged at the front of this document rather than in its security
+  section &mdash; because commands riding inside a 402 are the first thing
+  a reviewer will challenge. The <em>Discovery, not execution</em> section
+  above is the result.</p>
+
+  <p>Thanks to <strong>noonoop</strong> of <strong>Subnano</strong>, who
+  asked whether a single-rail server &mdash; one whose <code>accepts</code>
+  will only ever name one rail, and so can never demonstrate rail
+  negotiation &mdash; still belongs in this proposal. The answer sharpened
+  this document's scope: discovery and onboarding are railHint's core use;
+  negotiation is the special case. Subnano plans to upgrade its x402 v1
+  endpoint to canonical v2, using a Feeless402 client as its first
+  independent interoperability test.</p>
 </main>
