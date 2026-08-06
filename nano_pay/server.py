@@ -115,6 +115,43 @@ def _count_paid_call(payer: str, demo_address: str) -> None:
         pass
 
 
+def _faucet_funding() -> dict:
+    """Who has put XNO INTO the faucet, read straight off the chain.
+
+    Three kinds of deposit: our own top-ups, grants an agent didn't spend
+    and sent back, and donations from people who owed us nothing.
+    """
+    try:
+        hist = (rpc.call({"action": "account_history",
+                          "account": faucet_wallet.address,
+                          "count": "500"}).get("history") or [])
+    except Exception:
+        return {"donations": None, "donated_xno": None,
+                "returned_grants": None, "recent": [], "address": None}
+    ours = _self_addresses()
+    claimants = set(_ledger().get("addresses", {}))
+    donations, returned, donated_raw = [], 0, 0
+    for e in hist:
+        if e.get("type") != "receive":
+            continue
+        src, raw = e.get("account", ""), int(e.get("amount", 0))
+        if src in claimants:            # an agent handing back what it didn't use
+            if src not in ours:
+                returned += 1
+        elif src in ours:               # our own funding
+            continue
+        else:
+            donated_raw += raw
+            donations.append({"from": src, "xno": str(raw_to_xno(raw)),
+                              "unix": int(e.get("local_timestamp") or 0)})
+    donations.sort(key=lambda d: d["unix"], reverse=True)
+    return {"donations": len(donations),
+            "donated_xno": float(raw_to_xno(donated_raw)) if donated_raw else 0.0,
+            "returned_grants": returned,
+            "recent": donations[:8],
+            "address": faucet_wallet.address}
+
+
 def _paid_calls() -> dict:
     try:
         d = json.loads(PAID_CALLS.read_text())
@@ -297,6 +334,7 @@ def _stats_data():
             "claims_remaining": (
                 int(faucet_bal / per_claim) if faucet_bal else None
             ),
+            "funding": _cached("faucet_funding", 300, _faucet_funding),
             "last_claim_unix": ts_list[-1] if ts_list else None,
             "recent_unix": ts_list[-60:],
         },
@@ -395,6 +433,17 @@ STATS_HTML = """<title>Stats — Feeless402</title>
     <div class="tile"><div class="num" id="f_rem">&ndash;</div><div class="lbl">claims left in faucet</div></div>
   </div>
 
+  <h2>Who keeps the faucet full</h2>
+  <div class="grid">
+    <div class="tile"><div class="num" id="c_don">&ndash;</div><div class="lbl">donations from the community</div></div>
+    <div class="tile"><div class="num" id="c_xno">&ndash;</div><div class="lbl">XNO donated</div></div>
+    <div class="tile"><div class="num" id="c_ret">&ndash;</div><div class="lbl">grants handed back unspent</div></div>
+  </div>
+  <p class="cap" id="c_thanks">&nbsp;</p>
+  <div id="c_list"></div>
+  <p class="cap">Faucet address &mdash; anything sent here becomes starter XNO for
+  someone else's agent:<br><code id="c_addr" style="word-break:break-all"></code></p>
+
   <h2>Installs &amp; downloads</h2>
   <div class="grid">
     <div class="tile"><div class="num" id="d_pypi">&ndash;</div><div class="lbl">PyPI downloads (30d)</div></div>
@@ -443,6 +492,23 @@ async function load(){
   const p=d.pypi||{},c=d.clawhub||{},g=d.github||{};
   n2('d_pypi',p.last_month);n2('d_pypi_d',p.last_day);
   n2('d_claw',c.downloads!=null?c.downloads:c.installs_60d);n2('d_gh',g.stars);
+  var fu=f.funding||{};
+  n2('c_don',fu.donations);n2('c_xno',fu.donated_xno);n2('c_ret',fu.returned_grants);
+  document.getElementById('c_addr').textContent=fu.address||'–';
+  var th=document.getElementById('c_thanks');
+  if(fu.donations>0){
+    th.innerHTML='<strong>Thank you.</strong> Nobody was asked for this. '+
+      fu.donations+' '+(fu.donations==1?'person':'people')+' topped up the faucet '+
+      'so a stranger’s agent could take its first steps'+
+      (fu.returned_grants>0?', and '+fu.returned_grants+' agent'+
+      (fu.returned_grants==1?'':'s')+' sent back the XNO they didn’t spend':'')+'.';
+  } else { th.textContent=''; }
+  var cl=document.getElementById('c_list');
+  cl.innerHTML=(fu.recent||[]).map(function(d){
+    var when=d.unix?new Date(d.unix*1000).toLocaleDateString():'';
+    return '<div class="cap"><a href="https://blocklattice.io/account/'+d.from+
+      '">'+d.from.slice(0,16)+'…'+d.from.slice(-6)+'</a> &mdash; <strong>'+
+      d.xno+' XNO</strong> '+when+'</div>';}).join('');
   var pc=t.paid_calls||{};n2('p_ext',pc.external);n2('p_demo',pc.demo);
   document.getElementById('t_bal').textContent=(t.balance_xno==null&&t.receivable_xno==null)?'–':xno((t.balance_xno||0)+(t.receivable_xno||0));
   document.getElementById('t_price').textContent=xno(t.price_per_call_xno);
