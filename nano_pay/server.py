@@ -146,6 +146,10 @@ def _faucet_funding() -> dict:
                               "unix": int(e.get("local_timestamp") or 0)})
     donations.sort(key=lambda d: d["unix"], reverse=True)
     return {"donations": len(donations),
+            # Distinct addresses, not deposits — one person topping up three
+            # times is one person. (Someone using two addresses still counts
+            # twice; the chain can't tell us otherwise.)
+            "donors": len({d["from"] for d in donations}),
             "donated_xno": float(raw_to_xno(donated_raw)) if donated_raw else 0.0,
             "returned_grants": returned,
             "recent": donations[:8],
@@ -493,16 +497,10 @@ async function load(){
   n2('d_pypi',p.last_month);n2('d_pypi_d',p.last_day);
   n2('d_claw',c.downloads!=null?c.downloads:c.installs_60d);n2('d_gh',g.stars);
   var fu=f.funding||{};
-  n2('c_don',fu.donations);n2('c_xno',fu.donated_xno);n2('c_ret',fu.returned_grants);
+  n2('c_don',fu.donors);n2('c_xno',fu.donated_xno);n2('c_ret',fu.returned_grants);
   document.getElementById('c_addr').textContent=fu.address||'–';
   var th=document.getElementById('c_thanks');
-  if(fu.donations>0){
-    th.innerHTML='<strong>Thank you.</strong> Nobody was asked for this. '+
-      fu.donations+' '+(fu.donations==1?'person':'people')+' topped up the faucet '+
-      'so a stranger’s agent could take its first steps'+
-      (fu.returned_grants>0?', and '+fu.returned_grants+' agent'+
-      (fu.returned_grants==1?'':'s')+' sent back the XNO they didn’t spend':'')+'.';
-  } else { th.textContent=''; }
+  th.innerHTML=(fu.donors>0)?'<strong>Thank you.</strong>':'';
   var cl=document.getElementById('c_list');
   cl.innerHTML=(fu.recent||[]).map(function(d){
     var when=d.unix?new Date(d.unix*1000).toLocaleDateString():'';
