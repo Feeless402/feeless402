@@ -47,8 +47,11 @@ block via its facilitator; nothing is broadcast unless the server accepts.
 - **No node required:** public RPC failover (rpc.nano.to, somenano,
   rainstorm.city, nanoslo); all signing and PoW happen locally (nanopy
   C extension). RPC `work_generate` is tried first, local PoW is the
-  fallback (~25s), and work for the next block is pre-cached after every
-  transaction so steady-state payments are instant.
+  fallback (~25s). The CLI pre-caches work for your *next* block after it
+  has printed the result of the current one, so steady-state payments are
+  instant. Library callers opt in: `send()`, `receive_all()` and
+  `request_with_payment()` take `prework=` and default to **off**, because
+  pre-caching blocks for minutes and must never sit on a request path.
 - **Safety rails:** per-payment price cap (`--max-xno`, default 0.05);
   `quote` command inspects any endpoint's price without paying;
   balance is always re-synced from the network, never trusted locally.
@@ -67,7 +70,7 @@ but don't fire concurrent payments from one wallet).
 
 ## Status
 
-Beta (v0.2.1). Proven on mainnet with real funds: live paid calls to
+Beta (v0.2.2). Proven on mainnet with real funds: live paid calls to
 NanoGPT ($0.0000096/call, confirmed on-ledger), full merchant loop
 (verify → settle → confirm, no facilitator), PoW-gated faucet claims,
 and a complete stranger-agent lifecycle (fresh wallet → PoW claim →

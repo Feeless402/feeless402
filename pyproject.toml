@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "feeless402"
-version = "0.2.1"
+version = "0.2.2"
 description = "Feeless x402 micropayments for AI agents — self-custodied XNO wallet, pay-per-call client, merchant server with railHint, faucet, and MCP server"
 readme = "README.md"
 license = { text = "MIT" }
@@ -26,9 +26,9 @@ Specification = "https://railhint.com"
 Source = "https://github.com/feeless402/feeless402"
 
 [project.optional-dependencies]
-server = ["fastapi", "uvicorn[standard]"]
+server = ["fastapi", "uvicorn[standard]", "anyio"]
 mcp = ["mcp>=2.0"]
-all = ["fastapi", "uvicorn[standard]", "mcp>=2.0"]
+all = ["fastapi", "uvicorn[standard]", "anyio", "mcp>=2.0"]
 
 [project.scripts]
 nano-pay = "nano_pay.cli:main"
