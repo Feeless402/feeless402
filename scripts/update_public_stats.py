@@ -44,6 +44,12 @@ LAUNCH_DAY = "2026-08-04"
 KEEP_DAYS = 21
 SHOW_DAYS = 14
 
+# Agent/faucet endpoints never count toward visitors, in ANY log: claim
+# farms POST /faucet through proxy pools with spoofed browser UAs (Aug 6:
+# ~1,100 one-hit proxies), and that traffic is already counted as claims.
+# /faucet.html (the human page) still counts — the (?!\.html) guard.
+AGENT_PATH = re.compile(r"^/(?:faucet(?!\.html)|premium|mcp(?:[/?]|$)|llms\.txt|\.well-known|v1/)")
+
 BOT_PATH = re.compile(r"\.php|/wp-|xmlrpc|\.env|\.git|/vendor/|/media/|\.asp|\.cgi")
 BOT_UA = re.compile(
     r"bot|crawl|spider|slurp|scan|censys|shodan|masscan|zgrab|nuclei|sqlmap"
@@ -157,6 +163,8 @@ def visitors():
                 ip, dd, mon, yyyy, url, ua = m.groups()
                 if ip in SELF_IPS or BOT_PATH.search(url) or not is_human_ua(ua):
                     continue
+                if AGENT_PATH.match(url):
+                    continue  # agent surface — counted as claims/paid calls, not visitors
                 if shared and not F402_PATH.match(url):
                     continue  # another vhost's traffic in the pre-split log
                 date = f"{yyyy}-{MON[mon]:02d}-{dd}"

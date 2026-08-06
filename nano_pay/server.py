@@ -627,6 +627,16 @@ def create_app() -> FastAPI:
     def stats_json():
         return _stats_data()
 
+    # Liveness for uptime monitors and integrators (real users probed for
+    # both spellings) — cheap on purpose: no RPC, no wallet, no state writes.
+    start_unix = time.time()
+
+    @app.get("/health")
+    @app.get("/status")
+    def health():
+        return {"ok": True, "service": "feeless402", "version": __version__,
+                "uptime_s": int(time.time() - start_unix)}
+
     @app.get("/stats", response_class=HTMLResponse)
     def stats_page():
         return STATS_HTML
