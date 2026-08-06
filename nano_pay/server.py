@@ -505,7 +505,8 @@ async function load(){
   cl.innerHTML=(fu.recent||[]).map(function(d){
     var when=d.unix?new Date(d.unix*1000).toLocaleDateString():'';
     return '<div class="cap"><a href="https://blocklattice.io/account/'+d.from+
-      '">'+d.from.slice(0,16)+'…'+d.from.slice(-6)+'</a> &mdash; <strong>'+
+      '" target="_blank" rel="noopener noreferrer">'+
+      d.from.slice(0,16)+'…'+d.from.slice(-6)+'</a> &mdash; <strong>'+
       d.xno+' XNO</strong> '+when+'</div>';}).join('');
   var pc=t.paid_calls||{};n2('p_ext',pc.external);n2('p_demo',pc.demo);
   document.getElementById('t_bal').textContent=(t.balance_xno==null&&t.receivable_xno==null)?'–':xno((t.balance_xno||0)+(t.receivable_xno||0));
@@ -513,7 +514,7 @@ async function load(){
   const gen=new Date((s.generated_unix||Date.now()/1000)*1000);
   document.getElementById('ts').textContent='updated '+gen.toLocaleTimeString();
   const lc=f.last_claim_unix?new Date(f.last_claim_unix*1000).toLocaleString():'none yet';
-  document.getElementById('foot').innerHTML='Last faucet claim: '+lc+' &middot; <a href="/stats.json">raw JSON</a> &middot; <a href="https://pypi.org/project/feeless402/">PyPI</a> &middot; MCP registry: com.feeless402/nano-pay';
+  document.getElementById('foot').innerHTML='Last faucet claim: '+lc+' &middot; <a href="/stats.json">raw JSON</a> &middot; <a href="https://pypi.org/project/feeless402/" target="_blank" rel="noopener noreferrer">PyPI</a> &middot; MCP registry: com.feeless402/nano-pay';
  }catch(e){document.getElementById('ts').textContent='stats unavailable';}
 }
 load();setInterval(load,30000);
