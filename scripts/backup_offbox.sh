@@ -8,9 +8,7 @@ set -euo pipefail
 
 CONF=/root/.nano-pay/backup-dest
 PASS=/root/.nano-pay/backup-pass
-[ -r "$CONF" ] && [ -r "$PASS" ] || { echo "backup: missing $CONF or $PASS" >&2; exit 1; }
-# shellcheck disable=SC1090
-. "$CONF"
+[ -r "$PASS" ] || { echo "backup: missing $PASS" >&2; exit 1; }
 
 STAMP=$(date -u +%Y%m%d)
 OUT=/root/backups
@@ -21,11 +19,19 @@ tar czf - -C /root .nano-pay vane/logs/live 2>/dev/null \
   | openssl enc -aes-256-cbc -pbkdf2 -salt -pass "file:$PASS" \
   > "$OUT/f402-$STAMP.tar.gz.enc"
 
-# Keep 14 local, ship all current ones, prune remote copies older than 30 days
+# Keep 14 local snapshots
 ls -t "$OUT"/f402-*.tar.gz.enc | tail -n +15 | xargs -r rm --
-rsync -a -e "ssh -p ${PORT:-22} -i /root/.ssh/f402_backup_ed25519 -o StrictHostKeyChecking=accept-new" \
-  "$OUT"/f402-*.tar.gz.enc "$HOST:${DIR:-~/f402-backup}/"
-ssh -p "${PORT:-22}" -i /root/.ssh/f402_backup_ed25519 "$HOST" \
-  "find ${DIR:-~/f402-backup} -name 'f402-*.tar.gz.enc' -mtime +30 -delete" || true
 
-echo "backup ok: f402-$STAMP.tar.gz.enc"
+# Ship off-box only when a push destination is configured; a pull-only
+# setup (e.g. laptop fetches over scp) just uses the local snapshots.
+if [ -r "$CONF" ]; then
+  # shellcheck disable=SC1090
+  . "$CONF"
+  rsync -a -e "ssh -p ${PORT:-22} -i /root/.ssh/f402_backup_ed25519 -o StrictHostKeyChecking=accept-new" \
+    "$OUT"/f402-*.tar.gz.enc "$HOST:${DIR:-~/f402-backup}/"
+  ssh -p "${PORT:-22}" -i /root/.ssh/f402_backup_ed25519 "$HOST" \
+    "find ${DIR:-~/f402-backup} -name 'f402-*.tar.gz.enc' -mtime +30 -delete" || true
+  echo "backup ok (shipped): f402-$STAMP.tar.gz.enc"
+else
+  echo "backup ok (local only, no $CONF): f402-$STAMP.tar.gz.enc"
+fi
