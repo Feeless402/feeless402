@@ -134,8 +134,12 @@ class Wallet:
 
     # ---------- operations ----------
 
-    def receive_all(self, rpc, prework=True) -> list:
-        """Pocket all pending incoming sends. Returns list of (hash, raw)."""
+    def receive_all(self, rpc, prework=False) -> list:
+        """Pocket all pending incoming sends. Returns list of (hash, raw).
+
+        prework defaults to OFF for the same reason as send() — opt in only
+        where a human is the one waiting.
+        """
         received = []
         pending = rpc.receivable(self.address)
         for send_hash, raw_amt in pending.items():
@@ -151,8 +155,15 @@ class Wallet:
             self.prework(self._work_root(acct), rpc)
         return received
 
-    def send(self, rpc, to_addr: str, raw_amt: int, prework=True) -> str:
-        """Direct send (broadcast by us). Returns block hash."""
+    def send(self, rpc, to_addr: str, raw_amt: int, prework=False) -> str:
+        """Direct send (broadcast by us). Returns block hash.
+
+        prework defaults to OFF. Passing True makes this call block for
+        minutes after the send has already landed, solving the PoW for the
+        *next* block — fine in a CLI where the user is the only one waiting,
+        never on a request path. That default cost us two outages (the demo,
+        then the faucet), so the dangerous option is now opt-in.
+        """
         acct = self.synced_account(rpc)
         if acct.raw_bal < raw_amt:
             raise WalletError(
@@ -185,9 +196,14 @@ class Wallet:
         blk = acct.send(nanopy.Account(addr=to_addr), raw_amt, work=work)
         return blk.dict_, blk.hash_, root
 
-    def payment_succeeded(self, rpc, new_frontier: str, work_root: str):
+    def payment_succeeded(self, rpc, new_frontier: str, work_root: str,
+                          prework: bool = True):
+        """Book a settled payment. prework=False skips the (slow) warm-up of
+        the next block's PoW — pass it when a caller is waiting, then warm
+        later at a moment of your choosing."""
         self.drop_work(work_root)
-        self.prework(new_frontier, rpc)
+        if prework:
+            self.prework(new_frontier, rpc)
 
     def payment_failed(self, work_root: str):
         # Keep cached work (frontier unchanged), but note the fork hazard:

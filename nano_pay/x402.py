@@ -196,12 +196,20 @@ def request_with_payment(
     max_raw: int,
     headers: dict = None,
     dry_run: bool = False,
+    prework: bool = False,
     **req_kwargs,
 ):
     """Make an HTTP request, transparently paying a Nano x402 quote.
 
     Returns (response, receipt_dict_or_None). dry_run=True stops after
     the quote and returns (402_response, parsed_quote).
+
+    prework defaults to False so this returns as soon as the payment has
+    settled. Setting it True makes the call block for minutes afterwards
+    solving the *next* block's proof-of-work — never do that inside a
+    request handler. To keep later payments fast, call
+    `wallet.prework(wallet._work_root(wallet.synced_account(rpc)), rpc)`
+    yourself once the caller has their response.
     """
     headers = dict(headers or {})
     # Signal x402 support (NanoGPT requires opting in to the quote flow).
@@ -252,7 +260,7 @@ def request_with_payment(
             receipt = {"raw_header": rec_hdr}
 
     if 200 <= r2.status_code < 300:
-        wallet.payment_succeeded(rpc, new_frontier, work_root)
+        wallet.payment_succeeded(rpc, new_frontier, work_root, prework=prework)
     else:
         wallet.payment_failed(work_root)
     return r2, receipt or {

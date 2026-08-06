@@ -3,6 +3,7 @@
 import argparse
 import json
 import sys
+import time
 
 from . import raw_to_xno, xno_to_raw
 from .rpc import RPC
@@ -59,7 +60,7 @@ def cmd_status(args):
 def cmd_receive(args):
     w = Wallet().load()
     rpc = RPC()
-    got = w.receive_all(rpc)
+    got = w.receive_all(rpc, prework=True)
     acct = w.synced_account(rpc)
     out(
         {
@@ -75,7 +76,18 @@ def cmd_send(args):
     w = Wallet().load()
     rpc = RPC()
     h = w.send(rpc, args.to, xno_to_raw(args.amount))
-    out({"status": "sent", "hash": h, "to": args.to, "amount_xno": args.amount})
+    # Receipt first, then warm the next block's PoW (minutes, and nobody is
+    # waiting on it). out() exits the process, so print and flush before.
+    print(json.dumps({"status": "sent", "hash": h, "to": args.to,
+                      "amount_xno": args.amount}, indent=2, default=str),
+          flush=True)
+    print("sent. now pre-computing the next block's proof-of-work so your "
+          "next send is instant — safe to Ctrl-C.", file=sys.stderr, flush=True)
+    try:
+        w.prework(h, rpc)
+    except Exception:
+        pass
+    sys.exit(0)
 
 
 def cmd_prework(args):
@@ -113,7 +125,7 @@ def _do_request(args, dry_run):
         body = r.json()
     except Exception:
         pass
-    out(
+    result = (
         {
             "status_code": r.status_code,
             "paid": (not dry_run) and info is not None,
@@ -123,6 +135,19 @@ def _do_request(args, dry_run):
         if not args.body_only
         else body
     )
+    if dry_run or info is None:
+        out(result)
+    # Paid: give the caller their response first, then warm the next block's
+    # PoW so the following payment is instant. out() exits, so print first.
+    print(json.dumps(result, indent=2, default=str), flush=True)
+    print("payment settled. now pre-computing the next block's proof-of-work "
+          "so your next payment is instant — safe to Ctrl-C.",
+          file=sys.stderr, flush=True)
+    try:
+        w.prework(w._work_root(w.synced_account(rpc)), rpc)
+    except Exception:
+        pass
+    sys.exit(0)
 
 
 def cmd_quote(args):
@@ -235,7 +260,18 @@ def cmd_claim(args):
         attempts.append({"faucet": base, "status": code, "result": res})
         if code == 200:
             rpc = RPC()
-            got = w.receive_all(rpc)
+            # The faucet's send needs a moment to reach the node we're asking.
+            # Poll rather than assume: a fast faucet reply used to be slow
+            # enough to hide this, and a claim that reports 0 received looks
+            # to the user like the faucet failed.
+            got = []
+            for attempt in range(20):
+                got = w.receive_all(rpc, prework=False)
+                if got:
+                    break
+                time.sleep(1.5)
+            if got:
+                w.prework(got[-1][0], rpc)   # warm the next block off the hash
             acct = w.synced_account(rpc)
             out(
                 {

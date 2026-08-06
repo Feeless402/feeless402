@@ -136,7 +136,7 @@ def faucet_claim(faucet_url: str = "https://feeless402.com") -> str:
     w = Wallet().load() if Wallet().exists() else Wallet().create()
     code, res = _claim_one(faucet_url, w)
     if code == 200:
-        got = w.receive_all(_rpc())
+        got = w.receive_all(_rpc(), prework=True)
         res["received_xno"] = raw_to_xno(sum(a for _, a in got))
     return json.dumps({"status": code, "result": res})
 
