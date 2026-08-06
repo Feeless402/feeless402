@@ -1,6 +1,17 @@
 """Nano node RPC client with public-node failover."""
 
+import os
+
 import requests
+
+# Optional dedicated proof-of-work service, tried before the public nodes.
+# Public nodes serve work in ~5s and many refuse outright, which caps how
+# fast a faucet or merchant can sign blocks. Set:
+#   F402_WORK_URLS  comma-separated work endpoints
+#   F402_WORK_KEY   sent as {"key": ...} and as a Bearer header (services differ)
+WORK_URLS = [u.strip() for u in os.environ.get("F402_WORK_URLS", "").split(",")
+             if u.strip()]
+WORK_KEY = os.environ.get("F402_WORK_KEY", "")
 
 DEFAULT_RPCS = [
     "https://rpc.nano.to",
@@ -19,9 +30,11 @@ class RPCError(Exception):
 
 
 class RPC:
-    def __init__(self, urls=None, timeout=20):
+    def __init__(self, urls=None, timeout=20, work_urls=None, work_key=None):
         self.urls = urls or list(DEFAULT_RPCS)
         self.timeout = timeout
+        self.work_urls = work_urls if work_urls is not None else list(WORK_URLS)
+        self.work_key = work_key if work_key is not None else WORK_KEY
 
     def call(self, payload: dict) -> dict:
         last_err = None
@@ -91,18 +104,22 @@ class RPC:
         return res["hash"]
 
     def work_generate(self, root: str, difficulty: str):
-        """Ask nodes for work; many public nodes refuse — return None then."""
-        for url in self.urls:
+        """Ask a work service first, then nodes; many public nodes refuse.
+
+        Returns None if nobody will do it, and the caller falls back to
+        local PoW.
+        """
+        payload = {"action": "work_generate", "hash": root,
+                   "difficulty": difficulty}
+        for url in list(self.work_urls) + list(self.urls):
+            body = dict(payload)
+            headers = {}
+            if url in self.work_urls and self.work_key:
+                body["key"] = self.work_key            # BoomPoW-style
+                headers["Authorization"] = f"Bearer {self.work_key}"
             try:
-                r = requests.post(
-                    url,
-                    json={
-                        "action": "work_generate",
-                        "hash": root,
-                        "difficulty": difficulty,
-                    },
-                    timeout=self.timeout,
-                )
+                r = requests.post(url, json=body, headers=headers,
+                                  timeout=self.timeout)
                 data = r.json()
                 if isinstance(data, dict) and data.get("work"):
                     return data["work"]
