@@ -248,21 +248,35 @@
     <p>Machine customers have no brand loyalty and no habits. They compare total
     cost and settle where the number is smallest. Here is the shape of a real
     quote from a live pay-per-call AI provider — the same tiny API call, priced
-    two ways. (Sample observed August&nbsp;2026; exact figures float with markets
+    three ways. (Sample observed August&nbsp;2026; exact figures float with markets
     and model pricing, so <a href="#live-quote">pull today’s quote live&nbsp;↓</a>
     and check us.)</p>
     <div class="tablewrap">
     <table>
-      <tr><th>Rail</th><th>Quoted price</th><th>True cost of the call</th><th>Markup</th></tr>
-      <tr><td>Gas rail, floored (USDC on Base)</td><td class="num">$0.001000</td><td class="num">~$0.000001</td><td class="num">~1,000×</td></tr>
-      <tr class="win"><td>Feeless rail (XNO)</td><td class="num">~$0.000001</td><td class="num">~$0.000001</td><td class="num">1× — exact</td></tr>
+      <tr><th>Rail</th><th>Quoted price</th><th>True cost of the call</th><th>Markup</th><th>How it gets there</th></tr>
+      <tr><td>Gas rail, floored (USDC on Base)</td><td class="num">$0.001000</td><td class="num">~$0.000001</td><td class="num">~1,000×</td><td>gas fees force a price floor</td></tr>
+      <tr><td>Subsidized rail (micro-USDC)</td><td class="num">~$0.000001</td><td class="num">~$0.000001</td><td class="num">~1.1×</td><td>Circle absorbs the gas and batches settlements</td></tr>
+      <tr class="win"><td>Feeless rail (XNO)</td><td class="num">~$0.000001</td><td class="num">~$0.000001</td><td class="num">1× — exact</td><td>there is no gas</td></tr>
     </table>
     </div>
     <p style="margin-top:1.1rem">Base isn’t expensive because anyone is greedy — sub-millicent
-    transfers just don’t fit a rail with gas. They fit a rail without one.
-    <strong>The same $5 top-up buys ~5,000 calls on the floored rail — or millions
-    at the metered price.</strong> Same five dollars, three orders of magnitude
-    more work.</p>
+    transfers just don’t fit a rail with gas. So study the middle row: in 2026
+    Circle began quoting micro-USDC at true cost by <em>paying the gas itself</em>
+    and batching thousands of payments into each on-chain settlement.
+    Adoption-by-subsidy has a pedigree — Lightning’s near-zero routing fees were
+    likewise carried for years by operators running channels at a loss. And it
+    concedes our whole thesis: <strong>the market price for moving a machine’s
+    money is zero.</strong> The only question is how a rail gets there. A subsidy
+    has an owner, a budget, and a batch queue; it’s a decision, and decisions get
+    reversed when budgets do. The asset has an owner too — USDC ships with a
+    freeze function, and Circle has used it. That’s not a scandal; custodial
+    stablecoins are designed to be governable. But it isn’t zero, and it isn’t
+    yours. Feeless is physics on a truly decentralized ledger: no gas to absorb,
+    no batch to wait in, no freeze key anywhere in the design — every call
+    settles alone, on-ledger, in under a second, to keys only you hold.
+    <strong>The same $5 buys ~5,000 calls on the floored rail — or millions at
+    the metered price on either of the other two.</strong> We just don’t need
+    anyone’s permission, or anyone’s budget, to keep it that way.</p>
   </section>
 
   <hr class="rail" />
