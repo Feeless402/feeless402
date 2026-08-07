@@ -285,6 +285,35 @@ def cmd_claim(args):
                     "attempts": attempts,
                 }
             )
+    # An already-claimed address is not a broken faucet: the money was
+    # granted earlier (possibly to a client that gave up before the reply).
+    # Pocket anything still pending and report the balance instead of a
+    # hard error — exit 0 when the wallet is funded, since the agent can
+    # proceed straight to paying.
+    already = [
+        a for a in attempts
+        if a["status"] == 429
+        and "already claimed" in str(a["result"].get("error", ""))
+    ]
+    if already:
+        rpc = RPC()
+        got = w.receive_all(rpc, prework=False)
+        acct = w.synced_account(rpc)
+        bal = raw_to_xno(acct.raw_bal)
+        out(
+            {
+                "status": "already_claimed",
+                "message": f"this address already received its starter XNO — "
+                           f"balance {bal} XNO, nothing more to claim here; "
+                           f"generate a fresh wallet if you need a new grant",
+                "balance_xno": bal,
+                "received_now": [
+                    {"hash": h, "amount_xno": raw_to_xno(a)} for h, a in got
+                ],
+                "attempts": attempts,
+            },
+            code=0 if acct.raw_bal else 1,
+        )
     out({"error": "no faucet granted a claim", "attempts": attempts}, code=1)
 
 
