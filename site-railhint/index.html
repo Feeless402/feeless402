@@ -36,6 +36,13 @@
   td:first-child, td:nth-child(2) { font-family: var(--mono); font-size: .8rem; white-space: nowrap; }
   .tablewrap { overflow-x: auto; }
   .rfc2119 { font-variant: small-caps; }
+
+  .toc { margin: 1.6rem 0 .4rem; padding: .9rem 1.1rem; border: 1px solid #dbe4e0;
+         border-radius: 8px; background: #fafcfb; font-size: .92rem; }
+  .toc b { display: block; font-size: .78rem; letter-spacing: .06em;
+           text-transform: uppercase; color: #6b7a74; margin-bottom: .45rem; }
+  .toc ol { margin: 0; padding-left: 1.35rem; }
+  .toc li { margin: .18rem 0; }
 </style>
 <main>
   <div class="meta">
@@ -48,7 +55,24 @@
 
   <h1>railHint: in-protocol rail negotiation for x402 payment-required responses</h1>
 
-  <h2>Abstract</h2>
+  <nav class="toc" aria-label="Contents">
+    <b>Contents</b>
+    <ol>
+      <li><a href="#abstract">Abstract</a></li>
+      <li><a href="#design-principle-discovery-not-execution">Design principle: discovery, not execution</a></li>
+      <li><a href="#motivation">Motivation</a></li>
+      <li><a href="#the-railhint-object">The railHint object</a></li>
+      <li><a href="#field-definitions">Field definitions</a></li>
+      <li><a href="#client-behavior">Client behavior</a></li>
+      <li><a href="#server-behavior">Server behavior</a></li>
+      <li><a href="#security">Security considerations</a></li>
+      <li><a href="#rail-neutrality">Rail neutrality</a></li>
+      <li><a href="#iana-style-considerations">IANA-style considerations</a></li>
+      <li><a href="#acknowledgements">Acknowledgements</a></li>
+    </ol>
+  </nav>
+
+  <h2 id="abstract">Abstract</h2>
   <p>x402 lets a server offer multiple payment options in <code>accepts</code>,
   but gives a machine client no structured way to learn <em>why</em> one rail
   is cheaper or <em>how</em> to onboard onto a rail it does not yet hold.
@@ -58,7 +82,7 @@
   that do not understand the extension ignore it; the <code>accepts</code>
   array remains the only binding payment terms.</p>
 
-  <h2>Design principle: discovery, not execution</h2>
+  <h2 id="design-principle-discovery-not-execution">Design principle: discovery, not execution</h2>
   <p>A railHint tells a client <em>where to look</em>, never <em>what to run</em>.
   <code>accepts</code> is the sole binding term of the payment; a client that
   ignores the hint loses information and nothing else. Fields naming commands or
@@ -78,7 +102,7 @@
   channel. The obligations this places on clients and servers are detailed in
   <a href="#security">Security considerations</a>.</p>
 
-  <h2>Motivation</h2>
+  <h2 id="motivation">Motivation</h2>
   <p>Autonomous clients select payment rails by arithmetic, but today the
   information needed to switch rails — comparative cost, client software,
   asset acquisition — lives in human documentation outside the protocol.
@@ -89,7 +113,7 @@
   402 response itself — the one message every paying client is guaranteed
   to parse, at the exact moment of payment choice.</p>
 
-  <h2>The railHint object</h2>
+  <h2 id="the-railhint-object">The railHint object</h2>
   <pre><code>{
   "x402Version": 2,
   "accepts": [
@@ -110,7 +134,7 @@
   }
 }</code></pre>
 
-  <h2>Field definitions</h2>
+  <h2 id="field-definitions">Field definitions</h2>
   <div class="tablewrap">
   <table>
     <tr><th>Field</th><th>Requirement</th><th>Semantics</th></tr>
@@ -125,7 +149,7 @@
   </table>
   </div>
 
-  <h2>Client behavior</h2>
+  <h2 id="client-behavior">Client behavior</h2>
   <p>A client that already holds the hinted asset proceeds exactly as
   without the extension: select an offer from <code>accepts</code>, pay,
   retry. A reasoning client <span class="rfc2119">may</span> evaluate
@@ -134,7 +158,7 @@
   retry the original request on the cheaper rail. A client that does not
   recognize <code>railHint</code> ignores it with no loss of function.</p>
 
-  <h2>Server behavior</h2>
+  <h2 id="server-behavior">Server behavior</h2>
   <p>Servers <span class="rfc2119">may</span> attach railHint to any 402
   response whose <code>accepts</code> contains more than zero offers.
   Servers <span class="rfc2119">must not</span> place terms in railHint
@@ -154,21 +178,21 @@
   proof-of-work challenges or equivalent cost-imposing mechanisms so that
   sybil claims cost the claimant more than the grant is worth.</p>
 
-  <h2>Rail neutrality</h2>
+  <h2 id="rail-neutrality">Rail neutrality</h2>
   <p>railHint is rail-agnostic. Any server may hint any rail — a Lightning
   merchant may hint <code>bitcoin-lightning</code>; a stablecoin merchant
   may hint an L2. The extension standardizes the <em>negotiation</em>, not
   a winner. Where genuinely fee-free rails exist, honest hints will tend
   to favor them; that is a property of arithmetic, not of this document.</p>
 
-  <h2>IANA-style considerations</h2>
+  <h2 id="iana-style-considerations">IANA-style considerations</h2>
   <p>This extension registers the key <code>railHint</code> within the
   x402 v2 <code>extensions</code> namespace. No other names are claimed.
   The JSON Schema at
   <a href="/railhint.schema.json">railhint.com/railhint.schema.json</a>
   is versioned with this draft.</p>
 
-  <h2>Acknowledgements</h2>
+  <h2 id="acknowledgements">Acknowledgements</h2>
   <p>Thanks to <strong>u/xnoforge</strong>, who reviewed the reference
   implementation and argued that &ldquo;discovery, not authority&rdquo;
   belonged at the front of this document rather than in its security
