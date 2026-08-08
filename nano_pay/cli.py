@@ -270,21 +270,33 @@ def cmd_claim(args):
                 if got:
                     break
                 time.sleep(1.5)
-            if got:
-                w.prework(got[-1][0], rpc)   # warm the next block off the hash
             acct = w.synced_account(rpc)
-            out(
-                {
-                    "claimed_from": base,
-                    "result": res,
-                    "received": [
-                        {"hash": h, "amount_xno": raw_to_xno(a)}
-                        for h, a in got
-                    ],
-                    "balance_xno": raw_to_xno(acct.raw_bal),
-                    "attempts": attempts,
-                }
-            )
+            payload = {
+                "claimed_from": base,
+                "result": res,
+                "received": [
+                    {"hash": h, "amount_xno": raw_to_xno(a)}
+                    for h, a in got
+                ],
+                "balance_xno": raw_to_xno(acct.raw_bal),
+                "attempts": attempts,
+            }
+            # Report the grant BEFORE warming the next block. Pre-computing
+            # takes minutes on a modest machine, and doing it first left the
+            # user staring at a blank terminal wondering whether the claim
+            # worked — on the very first command they ever run. Same order
+            # and same guard as send()/pay().
+            if got:
+                print(json.dumps(payload, indent=2, default=str), flush=True)
+                print("claimed. now pre-computing the next block's "
+                      "proof-of-work so your first payment is instant — "
+                      "safe to Ctrl-C.", file=sys.stderr, flush=True)
+                try:
+                    w.prework(got[-1][0], rpc)
+                except Exception:
+                    pass
+                sys.exit(0)
+            out(payload)
     # An already-claimed address is not a broken faucet: the money was
     # granted earlier (possibly to a client that gave up before the reply).
     # Pocket anything still pending and report the balance instead of a
