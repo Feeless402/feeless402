@@ -225,9 +225,21 @@ def _claim_one(base, w):
         if ch.get("pow_required"):
             import nanopy
 
+            # Deliberately local: the faucet's challenge is meant to cost the
+            # claimant real CPU, which is what stops a farm claiming in bulk.
+            # It cannot be handed to a work service without giving that away.
+            # It can, however, say so — running silent for minutes on the
+            # first command anyone tries reads as a hang.
+            print("solving the faucet's proof-of-work on this machine — "
+                  "usually 30s to a few minutes. This is what keeps the "
+                  "faucet from being drained; it only happens once.",
+                  file=sys.stderr, flush=True)
+            t0 = time.time()
             payload["work"] = (
                 f"{nanopy.ext.work_generate(bytes.fromhex(ch['root']), int(ch['difficulty'], 16), __import__('os').urandom(128)):016x}"
             )
+            print(f"proof-of-work solved in {time.time() - t0:.0f}s — claiming…",
+                  file=sys.stderr, flush=True)
     except Exception:
         pass  # no challenge endpoint — plain claim
     r = rq.post(f"{base}/faucet", json=payload, timeout=240)
