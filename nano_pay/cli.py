@@ -300,9 +300,11 @@ def cmd_claim(args):
             # and same guard as send()/pay().
             if got:
                 print(json.dumps(payload, indent=2, default=str), flush=True)
-                print("claimed. now pre-computing the next block's "
-                      "proof-of-work so your first payment is instant — "
-                      "safe to Ctrl-C.", file=sys.stderr, flush=True)
+                print("claimed — that was the slow part, and it is over. "
+                      "Pre-computing the proof-of-work for your next block "
+                      "now, and again after every transaction, so payments "
+                      "from here are near-instant. Safe to Ctrl-C.",
+                      file=sys.stderr, flush=True)
                 try:
                     w.prework(got[-1][0], rpc)
                 except Exception:
