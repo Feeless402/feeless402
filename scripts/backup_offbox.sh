@@ -14,8 +14,15 @@ STAMP=$(date -u +%Y%m%d)
 OUT=/root/backups
 mkdir -p "$OUT"
 
-# Wallets + ledger (the irreplaceable part), plus Vane live DBs while they exist
-tar czf - -C /root .nano-pay vane/logs/live 2>/dev/null \
+# Wallets + ledger (the irreplaceable part), plus Vane live DBs while they
+# exist, plus the Sourcer's Desk blog console (posts/subscribers DB, smtp
+# creds, editor+templates), its console password file, the nginx vhosts
+# (none of these live in any repo), and the live sites themselves.
+tar czf - \
+  --exclude='sourcerdesk-blog/.venv' \
+  -C /root .nano-pay vane/logs/live sourcerdesk-blog sourcersdesk-launch \
+  -C /etc nginx/sites-available nginx/.sourcerdesk_htpasswd \
+  -C /var/www sourcerdesk feeless402 2>/dev/null \
   | openssl enc -aes-256-cbc -pbkdf2 -salt -pass "file:$PASS" \
   > "$OUT/f402-$STAMP.tar.gz.enc"
 

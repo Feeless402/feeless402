@@ -34,6 +34,9 @@ DOCS_URL = os.environ.get(
 PRICE_XNO = os.environ.get("F402_PRICE_XNO", "0.0001")
 FAUCET_XNO = os.environ.get("F402_FAUCET_XNO", "0.0005")
 FAUCET_TOPUP_XNO = os.environ.get("F402_FAUCET_TOPUP_XNO", "0.0045")
+# Kept as a string for xno_to_raw's Decimal path; parsed separately so the
+# "is it switched on" test can't trip over a str/int comparison.
+FAUCET_TOPUP_ON = float(FAUCET_TOPUP_XNO or 0) > 0
 # When the grant size last changed, so dispensed-history math stays honest.
 FAUCET_RATE_CHANGES = [(0.0, 0.005), (1786021000.0, float(FAUCET_XNO))]
 FAUCET_PER_IP_PER_DAY = int(os.environ.get("F402_FAUCET_PER_IP_PER_DAY", "3"))
@@ -125,11 +128,18 @@ def _maybe_graduate(payer: str) -> None:
     payment response; the send runs in its own thread under FAUCET_LOCK.
 
     Deliberately unadvertised on every user-facing surface: the paid call
-    itself is the proof of a real integration. Anything a farm could read
-    about, a farm would imitate — this way imitation means actually using
-    the rail, which is the point.
+    itself is the proof of a real integration.
+
+    ⚠️ Aug 7 2026: SET TO ZERO (disabled). The premise — that paying proves
+    a real integration — held for about sixteen hours. A farm started paying
+    the 0.0001 premium fee to unlock the 0.0045 top-up, a 45x return, and
+    took 11 of 12 grants in a day. Any unlock that costs far less than the
+    prize is just a price, not a proof. Re-enable by setting
+    F402_FAUCET_TOPUP_XNO above zero if the economics ever change.
     """
     try:
+        if not FAUCET_TOPUP_ON:
+            return
         if payer == demo_wallet.address or payer in _self_addresses():
             return
         led = _ledger()
