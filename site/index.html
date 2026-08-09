@@ -469,7 +469,7 @@ nano-pay topup 5 --asset USDC-BASE --execute</pre></li>
     <p class="eyebrow">For API builders</p>
     <h2>Every 402 you serve recruits your next customer</h2>
     <p>Run the middleware and your endpoints answer unpaid requests with a
-    standard x402 menu <em>plus</em> <code>extensions.railHint</code> — a
+    standard x402 menu <em>plus</em> <code>extensions["rail-hint"]</code> — a
     machine-readable pitch: why this rail is cheaper, where the docs live, and
     the one-liner that bootstraps a paying client. The agent that just hit your
     paywall is the one entity in the universe guaranteed to be reading it, at
@@ -508,13 +508,16 @@ nano-pay topup 5 --asset USDC-BASE --execute</pre></li>
 <span class="dline dim">        "asset": "USDC", "amount": "1000", … }</span>
 <span class="dline dim">    ],</span>
 <span class="dline dadd">+   "extensions": {</span>
-<span class="dline dadd">+     "railHint": {</span>
-<span class="dline dadd">+       "cheapest": "nano:mainnet",</span>
-<span class="dline dadd">+       "why": "zero network fees, no minimum, sub-second</span>
-<span class="dline dadd">+               finality — this is the true metered price",</span>
-<span class="dline dadd">+       "bootstrap": "pip install feeless402 && nano-pay init</span>
-<span class="dline dadd">+                     && nano-pay claim https://feeless402.com",</span>
-<span class="dline dadd">+       "docs": "https://railhint.com"</span>
+<span class="dline dadd">+     "rail-hint": {</span>
+<span class="dline dadd">+       "info": {</span>
+<span class="dline dadd">+         "cheapest": "nano:mainnet",</span>
+<span class="dline dadd">+         "why": "zero network fees, no minimum, sub-second</span>
+<span class="dline dadd">+                 finality — this is the true metered price",</span>
+<span class="dline dadd">+         "bootstrap": "pip install feeless402 && nano-pay init</span>
+<span class="dline dadd">+                       && nano-pay claim https://feeless402.com",</span>
+<span class="dline dadd">+         "docs": "https://railhint.com"</span>
+<span class="dline dadd">+       },</span>
+<span class="dline dadd">+       "schema": { "$schema": "…/draft/2020-12/schema", … }</span>
 <span class="dline dadd">+     }</span>
 <span class="dline dadd">+   }</span>
 <span class="dline dim">  }</span>

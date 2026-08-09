@@ -46,7 +46,7 @@
 </style>
 <main>
   <div class="meta">
-    railHint · draft-railhint-00 · August 2026<br>
+    railHint · draft-railhint-01 · August 2026 (supersedes draft-railhint-00: carrier key is now <code>rail-hint</code>, object shape is now <code>{info, schema}</code>)<br>
     Category: x402 community extension (advisory) · Requires: x402 v2<br>
     Schema: <a href="/railhint.schema.json">railhint.schema.json</a> ·
     Reference implementation: <a href="https://github.com/feeless402/feeless402" target="_blank" rel="noopener">github.com/feeless402/feeless402</a><br>
@@ -76,11 +76,13 @@
   <p>x402 lets a server offer multiple payment options in <code>accepts</code>,
   but gives a machine client no structured way to learn <em>why</em> one rail
   is cheaper or <em>how</em> to onboard onto a rail it does not yet hold.
-  This document defines <code>extensions.railHint</code>, an advisory object a
-  server MAY attach to an HTTP 402 response, carrying a cost rationale and an
-  onboarding path for the offer it considers cheapest for the payer. Clients
-  that do not understand the extension ignore it; the <code>accepts</code>
-  array remains the only binding payment terms.</p>
+  This document defines <code>extensions["rail-hint"]</code>, an advisory
+  object a server MAY attach to an HTTP 402 response, carrying a cost
+  rationale and an onboarding path for the offer it considers cheapest for
+  the payer. Clients that do not understand the extension ignore it; the
+  <code>accepts</code> array remains the only binding payment terms.
+  &ldquo;railHint&rdquo; remains the extension's name in prose; the wire key
+  follows the x402 SDK's kebab-case convention.</p>
 
   <h2 id="design-principle-discovery-not-execution">Design principle: discovery, not execution</h2>
   <p>A railHint tells a client <em>where to look</em>, never <em>what to run</em>.
@@ -114,6 +116,12 @@
   to parse, at the exact moment of payment choice.</p>
 
   <h2 id="the-railhint-object">The railHint object</h2>
+  <p>The extension is carried at <code>extensions["rail-hint"]</code> as an
+  object with exactly two members, following the convention every extension
+  in the x402 SDK uses: <code>info</code> holds the hint's fields, and
+  <code>schema</code> holds the JSON Schema (Draft 2020-12) that validates
+  <code>info</code>, shipped inline so a client can validate the declaration
+  without a network fetch.</p>
   <pre><code>{
   "x402Version": 2,
   "accepts": [
@@ -121,20 +129,34 @@
     { "scheme": "exact", "network": "nano:mainnet", "asset": "XNO",  "amount": "6690000000000000000000000", "payTo": "nano_..." }
   ],
   "extensions": {
-    "railHint": {
-      "cheapest": "nano:mainnet",
-      "why": "The base offer is floored at 0.001 USDC; the nano:mainnet offer is the metered price ($0.0000027) with zero network fees and sub-second finality.",
-      "docs": "https://example.com/docs",
-      "agentReadme": "https://example.com/llms.txt",
-      "bootstrap": "pip install feeless402 && nano-pay init",
-      "topup": "any instant-swap service: ~$5 of a held asset into the hinted asset",
-      "faucets": ["https://example.com/faucet"],
-      "spec": "x402 exact scheme on nano:mainnet"
+    "rail-hint": {
+      "info": {
+        "cheapest": "nano:mainnet",
+        "why": "The base offer is floored at 0.001 USDC; the nano:mainnet offer is the metered price ($0.0000027) with zero network fees and sub-second finality.",
+        "docs": "https://example.com/docs",
+        "agentReadme": "https://example.com/llms.txt",
+        "bootstrap": "pip install feeless402 && nano-pay init",
+        "topup": "any instant-swap service: ~$5 of a held asset into the hinted asset",
+        "faucets": ["https://example.com/faucet"],
+        "spec": "x402 exact scheme on nano:mainnet"
+      },
+      "schema": { "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "$id": "https://railhint.com/railhint.schema.json",
+                  "…": "canonical copy at railhint.com/railhint.schema.json" }
     }
   }
 }</code></pre>
+  <p id="legacy-key"><strong>Legacy key (deprecated).</strong>
+  draft-railhint-00 carried the fields flat at <code>extensions.railHint</code>
+  with no <code>info</code> wrapper and no inline schema. Servers built
+  against that draft <span class="rfc2119">should</span> migrate to
+  <code>rail-hint</code>; during transition a server <span class="rfc2119">may</span>
+  emit both keys with identical field content. Clients
+  <span class="rfc2119">should</span> prefer <code>rail-hint</code> when both
+  are present. The legacy key will be dropped from a future draft.</p>
 
   <h2 id="field-definitions">Field definitions</h2>
+  <p>All fields below live inside <code>info</code>.</p>
   <div class="tablewrap">
   <table>
     <tr><th>Field</th><th>Requirement</th><th>Semantics</th></tr>
@@ -156,7 +178,7 @@
   <code>why</code>, consult <code>docs</code> or <code>agentReadme</code>,
   acquire the asset via <code>topup</code> or <code>faucets</code>, and
   retry the original request on the cheaper rail. A client that does not
-  recognize <code>railHint</code> ignores it with no loss of function.</p>
+  recognize <code>rail-hint</code> ignores it with no loss of function.</p>
 
   <h2 id="server-behavior">Server behavior</h2>
   <p>Servers <span class="rfc2119">may</span> attach railHint to any 402
@@ -186,8 +208,10 @@
   to favor them; that is a property of arithmetic, not of this document.</p>
 
   <h2 id="iana-style-considerations">IANA-style considerations</h2>
-  <p>This extension registers the key <code>railHint</code> within the
-  x402 v2 <code>extensions</code> namespace. No other names are claimed.
+  <p>This extension registers the key <code>rail-hint</code> within the
+  x402 v2 <code>extensions</code> namespace. The key <code>railHint</code>
+  is reserved as a deprecated alias from draft-railhint-00 (see
+  <a href="#legacy-key">Legacy key</a>). No other names are claimed.
   The JSON Schema at
   <a href="/railhint.schema.json">railhint.com/railhint.schema.json</a>
   is versioned with this draft.</p>

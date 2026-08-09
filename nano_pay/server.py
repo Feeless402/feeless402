@@ -97,6 +97,61 @@ def _self_addresses() -> set:
         return set()
 
 
+# Addresses a faucet farm sweeps its grants into. A farm has to collect what it
+# harvests somewhere, and that destination is the one thing it can't fake away
+# without spending more than it earns — so it is the honest way to tell a bot's
+# payment from a person's, after the fact. Add to this list if a new one appears.
+FARM_COLLECTORS = {
+    "nano_3amg1cayw1ynb4fhyzhyc4hpwrehsy1ubtcdgi57bbz7ycjjkzjhpxtdcm6y",
+}
+
+
+def _looks_like_farm(payer: str) -> bool:
+    """Has this payer swept its balance into a known farm collector?
+
+    Runs off the request path — it costs an RPC call and a payment must never
+    wait on bookkeeping.
+    """
+    try:
+        hist = rpc.call({"action": "account_history", "account": payer,
+                         "count": "25"}).get("history", [])
+        return any(b.get("type") == "send"
+                   and b.get("account") in FARM_COLLECTORS for b in hist)
+    except Exception:
+        return False
+
+
+def _reclassify_if_farm(payer: str) -> None:
+    """Move a payment from external to farm once the sweep gives it away.
+
+    The farm pays our 0.0001 fee like anyone else, so at the moment of payment
+    it is indistinguishable from a real user. It gives itself away minutes or
+    hours later, when it sweeps. This re-checks then, so the public numbers
+    settle on the truth instead of flattering us.
+    """
+    def _check():
+        time.sleep(300)                      # give it time to sweep
+        if not _looks_like_farm(payer):
+            return
+        try:
+            d = json.loads(PAID_CALLS.read_text())
+            if payer in (d.get("payers", {}).get("farm") or []):
+                return                        # already counted as farm
+            d["external"] = max(0, int(d.get("external", 0)) - 1)
+            d["farm"] = int(d.get("farm", 0)) + 1
+            d.setdefault("payers", {}).setdefault("farm", []).append(payer)
+            ext = d.get("payers", {}).get("external") or []
+            if payer in ext:
+                ext.remove(payer)
+            tmp = PAID_CALLS.with_name(PAID_CALLS.name + ".tmp")
+            tmp.write_text(json.dumps(d, indent=2))
+            tmp.replace(PAID_CALLS)
+            print(f"reclassified farm payment: {payer[:20]}…", flush=True)
+        except Exception as e:
+            print("reclassify failed:", e, flush=True)
+    threading.Thread(target=_check, daemon=True).start()
+
+
 def _count_paid_call(payer: str, demo_address: str) -> None:
     """Tally a settled payment by who paid. Never raises — a bookkeeping
     failure must not affect a payment that already settled on-chain."""
@@ -211,13 +266,17 @@ def _faucet_funding() -> dict:
 def _paid_calls() -> dict:
     try:
         d = json.loads(PAID_CALLS.read_text())
+        # "external" must mean a person. Farm payments are broken out rather
+        # than folded in — a faucet farm paying our own fee to unlock a grant
+        # is not usage, and counting it as such flatters the numbers 5x.
         return {"external": int(d.get("external", 0)),
+                "farm": int(d.get("farm", 0)),
                 "demo": int(d.get("demo", 0)),
                 "self_test": int(d.get("self", 0)),
                 "last_external_unix": d.get("last_external_unix")}
     except Exception:
-        return {"external": None, "demo": None, "self_test": None,
-                "last_external_unix": None}
+        return {"external": None, "farm": None, "demo": None,
+                "self_test": None, "last_external_unix": None}
 
 
 def _self_ips() -> set:
@@ -258,6 +317,36 @@ def _client_ip(request) -> str:
             or (request.client.host if request.client else "unknown"))
 
 
+# JSON Schema (Draft 2020-12) validating the rail-hint `info` object. Shipped
+# inline with every declaration per the x402 SDK extension convention
+# ({"info": ..., "schema": ...}), so clients can validate without a fetch.
+# Canonical copy: https://railhint.com/railhint.schema.json
+RAILHINT_SCHEMA = {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://railhint.com/railhint.schema.json",
+    "title": "rail-hint",
+    "description": (
+        "Advisory rail-negotiation extension for x402 v2 402 responses. "
+        "Carried at extensions.\"rail-hint\" as {info, schema}. Non-binding: "
+        "the accepts array remains the only binding payment terms."
+    ),
+    "type": "object",
+    "required": ["cheapest", "why"],
+    "properties": {
+        "cheapest": {"type": "string"},
+        "why": {"type": "string"},
+        "docs": {"type": "string", "format": "uri"},
+        "site": {"type": "string", "format": "uri"},
+        "agentReadme": {"type": "string", "format": "uri"},
+        "bootstrap": {"type": "string"},
+        "topup": {"type": "string"},
+        "faucets": {"type": "array", "items": {"type": "string", "format": "uri"}},
+        "spec": {"type": "string"},
+    },
+    "additionalProperties": True,
+}
+
+
 def rail_hint(price_raw: int) -> dict:
     return {
         "cheapest": "nano:mainnet",
@@ -287,7 +376,7 @@ def rail_hint(price_raw: int) -> dict:
 def payment_required_body(price_raw: int, pay_to: str, resource: str) -> dict:
     return {
         "x402Version": 2,
-        "error": "Payment required — feeless XNO option available (see extensions.railHint)",
+        "error": "Payment required — feeless XNO option available (see extensions[\"rail-hint\"])",
         "resource": {"url": resource, "mimeType": "application/json"},
         "accepts": [
             {
@@ -299,7 +388,17 @@ def payment_required_body(price_raw: int, pay_to: str, resource: str) -> dict:
                 "maxTimeoutSeconds": 60,
             }
         ],
-        "extensions": {"railHint": rail_hint(price_raw)},
+        "extensions": {
+            # Conformant with the x402 SDK extension convention:
+            # kebab-case key, {info, schema} shape.
+            "rail-hint": {
+                "info": rail_hint(price_raw),
+                "schema": RAILHINT_SCHEMA,
+            },
+            # DEPRECATED legacy key (flat shape, draft-railhint-00 as first
+            # published). Kept while integrators migrate; will be removed.
+            "railHint": rail_hint(price_raw),
+        },
     }
 
 
@@ -557,6 +656,7 @@ STATS_HTML = """<title>Stats — Feeless402</title>
   <div class="grid">
     <div class="tile"><div class="num" id="p_ext">&ndash;</div><div class="lbl">paid calls by strangers</div></div>
     <div class="tile"><div class="num" id="p_demo">&ndash;</div><div class="lbl">homepage demo unlocks (we pay those)</div></div>
+    <div class="tile"><div class="num" id="p_farm">&ndash;</div><div class="lbl">faucet-farm payments (excluded from the count above)</div></div>
     <div class="tile"><div class="num" id="t_bal">&ndash;</div><div class="lbl">treasury balance (XNO, incl. our own demo)</div></div>
     <div class="tile"><div class="num" id="t_price">&ndash;</div><div class="lbl">price per call (XNO)</div></div>
   </div>
@@ -589,7 +689,7 @@ async function load(){
       '" target="_blank" rel="noopener noreferrer">'+
       d.from.slice(0,16)+'…'+d.from.slice(-6)+'</a> &mdash; <strong>'+
       d.xno+' XNO</strong> '+when+'</div>';}).join('');
-  var pc=t.paid_calls||{};n2('p_ext',pc.external);n2('p_demo',pc.demo);
+  var pc=t.paid_calls||{};n2('p_ext',pc.external);n2('p_demo',pc.demo);n2('p_farm',pc.farm);
   document.getElementById('t_bal').textContent=(t.balance_xno==null&&t.receivable_xno==null)?'–':xno((t.balance_xno||0)+(t.receivable_xno||0));
   document.getElementById('t_price').textContent=xno(t.price_per_call_xno);
   const gen=new Date((s.generated_unix||Date.now()/1000)*1000);
@@ -635,7 +735,10 @@ def create_app() -> FastAPI:
 
     @app.get("/stats.json")
     def stats_json():
-        return _stats_data()
+        # No caching: the page fetches this client-side, and a browser-cached
+        # copy is how a corrected figure keeps displaying the wrong number.
+        return JSONResponse(_stats_data(), headers={
+            "Cache-Control": "no-store, max-age=0"})
 
     # Liveness for uptime monitors and integrators (real users probed for
     # both spellings) — cheap on purpose: no RPC, no wallet, no state writes.
@@ -708,6 +811,7 @@ def create_app() -> FastAPI:
             )
             receipt = settle_block(block, rpc)
             _count_paid_call(payer, demo_wallet.address)
+            _reclassify_if_farm(payer)
             _maybe_graduate(payer)
         except PaymentInvalid as e:
             return JSONResponse(

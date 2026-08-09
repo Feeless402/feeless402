@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://railhint.com/railhint.schema.json",
-  "title": "railHint",
-  "description": "Advisory rail-negotiation extension for x402 v2 402 responses. Carried at extensions.railHint. Non-binding: the accepts array remains the only binding payment terms.",
+  "title": "rail-hint",
+  "description": "Advisory rail-negotiation extension for x402 v2 402 responses. Carried at extensions[\"rail-hint\"] as {info, schema}; this schema validates the info object. (Deprecated alias from draft-railhint-00: extensions.railHint, fields flat.) Non-binding: the accepts array remains the only binding payment terms.",
   "type": "object",
   "required": ["cheapest", "why"],
   "properties": {
