@@ -99,6 +99,33 @@
   <code>accepts</code> &mdash; never live market data or fee breakdowns for
   third-party networks. A client SHOULD treat any cost claim it cannot check
   against <code>accepts</code> as advertising and do its own arithmetic.</p>
+  <p>Concretely, prices move through the handshake in four steps, and no step
+  queries an external price source:</p>
+  <ol>
+    <li><strong>The server prices its own offers.</strong> Each entry in
+    <code>accepts</code> is a binding quote denominated in that rail's asset,
+    set by the server before the 402 is sent. How the server converts between
+    currencies to arrive at those quotes &mdash; an exchange feed, a fixed
+    peg, manual pricing &mdash; is its own business, out of band and out of
+    scope for this specification.</li>
+    <li><strong>The server annotates its own menu.</strong> A rail-hint names
+    which existing <code>accepts</code> entry the server considers lowest
+    total-cost for the payer (<code>cheapest</code>) and explains why
+    (<code>why</code>), using only its own quotes and the fee structure of
+    its own offers &mdash; e.g. &ldquo;this rail's quote is the whole cost;
+    that rail adds a per-transaction fee floor.&rdquo;</li>
+    <li><strong>The client verifies against the same response.</strong>
+    <code>cheapest</code> MUST match an entry in <code>accepts</code>; every
+    cost claim in <code>why</code> is checkable against the amounts binding
+    three lines up in the same HTTP body. Nothing requires trusting the
+    server about market data, because none is present.</li>
+    <li><strong>Cross-currency comparison stays with the client.</strong> If
+    a client wants to know what a quote is worth in a currency the server
+    does not quote in <code>accepts</code>, it uses its own price source
+    &mdash; exactly as it would for any x402 response with no hint at all.
+    No rail-hint field carries an exchange rate, and this specification
+    defines no mechanism for obtaining one.</li>
+  </ol>
   <p>This is deliberate. Rail negotiation belongs inside the existing 402
   handshake, and a payment-required response must never become a remote-code
   channel. The obligations this places on clients and servers are detailed in
