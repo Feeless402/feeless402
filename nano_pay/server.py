@@ -1045,7 +1045,7 @@ def create_app() -> FastAPI:
             "payer": demo_wallet.address,
             "hash": receipt["hash"],
             "confirmed": bool(receipt.get("confirmed")),
-            "explorer": f"https://nanexplorer.com/nano/block/{receipt['hash']}",
+            "explorer": f"https://blocklattice.io/block/{receipt['hash']}",
             "elapsed_s": elapsed,
             "article": r2.json().get("article"),
             "ledger": ledger,
