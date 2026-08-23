@@ -223,24 +223,52 @@ def split_sections(text):
 # ---------------------------------------------------------------- publish
 
 CSS = """
-:root{--bg:#0b0f14;--fg:#d8e1ea;--dim:#7b8a99;--acc:#37c8ab;--card:#121924;
---mono:ui-monospace,'SF Mono',Menlo,Consolas,monospace}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);
-font:16px/1.65 system-ui,-apple-system,Segoe UI,sans-serif;padding:2rem 1rem}
-main{max-width:44rem;margin:0 auto}a{color:var(--acc)}h1{font-size:1.5rem;
-line-height:1.3}h2{font-size:1.05rem;margin-top:2rem}.dim{color:var(--dim)}
-.mono{font-family:var(--mono);font-size:.85rem}.card{background:var(--card);
-border-radius:8px;padding:1rem 1.2rem;margin:1rem 0;overflow-x:auto}
-.receipt{font-family:var(--mono);font-size:.78rem;word-break:break-all}
-nav{font-family:var(--mono);font-size:.78rem;display:flex;gap:1.1rem;
-flex-wrap:wrap;margin-bottom:2rem}nav a{text-decoration:none}
-.opinion{border-left:3px solid var(--acc);padding-left:1rem}
-ul.arch{list-style:none;padding:0}ul.arch li{margin:.25rem 0}
+:root{--paper:#f3f5f7;--panel:#ffffff;--ink:#1c2420;--ink-soft:#55605a;
+--line:#d8dedb;--accent:#0d8a58;--accent-ink:#0a6b45;--amber:#b97d10;
+--term-bg:#182019;--term-ink:#d7e4da;--term-dim:#7d8f84;
+--mono:ui-monospace,"SF Mono","Cascadia Code","JetBrains Mono",Menlo,Consolas,monospace;
+--serif:Charter,"Iowan Old Style","Palatino Linotype",Georgia,serif}
+:root[data-theme="light"]{--paper:#f3f5f7;--panel:#fff;--ink:#1c2420;
+--ink-soft:#55605a;--line:#d8dedb;--accent:#0d8a58;--accent-ink:#0a6b45;
+--amber:#b97d10;--term-bg:#182019;--term-ink:#d7e4da;--term-dim:#7d8f84}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
+body{margin:0;background:var(--paper);color:var(--ink);
+font-family:var(--serif);font-size:17px;line-height:1.65}
+main{max-width:44rem;margin:0 auto;padding:0 1.25rem 5rem}
+header{padding:2.2rem 0 0;display:flex;align-items:baseline;
+justify-content:space-between;gap:1rem;flex-wrap:wrap}
+.brand{font-family:var(--mono);font-size:.95rem}
+.brand a{color:inherit;text-decoration:none}.brand b{color:var(--accent-ink)}
+nav{font-family:var(--mono);font-size:.78rem;display:flex;gap:1.1rem;flex-wrap:wrap}
+a{color:var(--accent-ink);text-underline-offset:3px}
+h1{font-size:1.9rem;font-weight:600;margin:2rem 0 .6rem;text-wrap:balance;line-height:1.25}
+h2{font-size:1.25rem;font-weight:600;margin:2.2rem 0 .6rem}
+p{margin:0 0 1rem}.dim{color:var(--ink-soft)}
+.mono{font-family:var(--mono);font-size:.8rem;word-break:break-all}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;
+padding:1rem 1.2rem;margin:1.2rem 0;overflow-x:auto}
+.term{background:var(--term-bg);color:var(--term-ink);border-radius:8px;
+border:1px solid var(--line);padding:.9rem 1.05rem;font-family:var(--mono);
+font-size:.78rem;line-height:1.8;overflow-x:auto;margin:1.2rem 0}
+.term .tdim{color:var(--term-dim)}.term a{color:var(--accent)}
+.receipt{word-break:break-all}
+.opinion{border-left:3px solid var(--accent);padding-left:1.3rem}
+ul.arch{list-style:none;padding:0}ul.arch li{margin:.35rem 0}
+details pre{background:var(--term-bg);color:var(--term-ink);border-radius:8px;
+padding:.9rem 1.05rem;white-space:pre-wrap}
+@media (max-width:640px){h1{font-size:1.55rem}h2{font-size:1.15rem}}
 """
 
-NAV = ('<nav><a href="/">Home</a><a href="/briefing/">Briefing</a>'
-       '<a href="/docs.html">Docs</a><a href="/faucet.html">Faucet</a>'
-       '<a href="/stats">Stats</a><a href="/llms.txt">llms.txt</a></nav>')
+
+def header_html(sub):
+    return (f'<header><div class="brand"><a href="/"><b>feeless402</b></a> / {sub}</div>'
+            '<nav><a href="/">Home</a><a href="/docs.html">Docs</a>'
+            '<a href="/faucet.html">Faucet</a><a href="/stats">Stats</a>'
+            '<a href="/briefing/">Briefing</a>'
+            '<a href="https://railhint.com" target="_blank" rel="noopener">Spec</a>'
+            '<a href="/llms.txt">llms.txt</a>'
+            '<a href="/.well-known/agent-card.json">A2A</a></nav></header>')
 
 DISCLOSURE = (
     'Researched from public APIs for free; <b>written by inference bought '
@@ -275,19 +303,19 @@ def day_page(date, headline, briefing, opinion, payments, data):
 <title>x402 Daily Briefing — {date}</title>
 <meta name="description" content="{html.escape(headline)}">
 <style>{CSS}</style></head><body><main>
-{NAV}
-<p class="dim mono">{date} · x402 Daily Briefing · feeless402.com</p>
+{header_html("briefing")}
+<p class="dim mono" style="margin-top:2rem">{date} · x402 Daily Briefing</p>
 <h1>{html.escape(headline)}</h1>
-<div class="card dim" style="font-size:.85rem">{DISCLOSURE}</div>
+<div class="panel dim" style="font-size:.9rem">{DISCLOSURE}</div>
 {paras(briefing)}
 <h2>Opinion</h2>
 <div class="opinion">{paras(opinion)}</div>
 <h2>What today's writing cost</h2>
-<div class="card">{receipts_html(payments)}
-<div class="dim mono" style="margin-top:.5rem">total {spent:.6f} XNO — fee-free, settled in under a second</div></div>
-<details class="dim"><summary class="mono">raw data given to the model</summary>
-<div class="card"><pre class="mono" style="white-space:pre-wrap">{html.escape(json.dumps(data, indent=1, default=str)[:6000])}</pre></div></details>
-<p class="dim mono"><a href="/briefing/">← all briefings</a> · <a href="/briefing/feed.json">feed.json</a></p>
+<div class="term">{receipts_html(payments)}
+<div class="tdim" style="margin-top:.5rem">total {spent:.6f} XNO — fee-free, settled in under a second</div></div>
+<details class="dim"><summary class="mono" style="cursor:pointer">raw data given to the model</summary>
+<pre class="mono">{html.escape(json.dumps(data, indent=1, default=str)[:6000])}</pre></details>
+<p class="dim mono" style="margin-top:1.5rem"><a href="/briefing/">← all briefings</a> · <a href="/briefing/feed.json">feed.json</a></p>
 </main></body></html>"""
 
 
@@ -305,13 +333,13 @@ def index_page(days, totals):
 <title>x402 Daily Briefing</title>
 <meta name="description" content="A daily x402 and agentic-payments briefing written by an AI agent that pays for its own inference with feeless Nano micropayments. Receipts on every page.">
 <style>{CSS}</style></head><body><main>
-{NAV}
+{header_html("briefing")}
 <h1>x402 Daily Briefing</h1>
 <p>A daily note on the x402 protocol ecosystem and agentic payments, published
 by an AI agent that <b>buys its own inference per-call over x402</b> — feeless
 Nano micropayments to a third-party merchant, block hashes published with every
 page. No API keys, no subscription, no human in the writing loop.</p>
-<div class="card mono dim">lifetime: {totals["days"]} briefings ·
+<div class="panel mono dim">lifetime: {totals["days"]} briefings ·
 {totals["calls"]} paid inference calls · {totals["spent_xno"]:.6f} XNO spent ·
 ≈ ${totals["spent_xno"] * 0.4:.4f} at recent rates</div>
 {latest_link}
@@ -349,6 +377,8 @@ def main():
              "headline": headline, "spent_xno": f"{spent:.6f}",
              "blocks": [p["block"] for p in payments if p.get("block")],
              "model": MODEL,
+             "briefing_text": briefing, "opinion_text": opinion,
+             "payments": payments, "data": data,
              "data_snapshot": {k: v for k, v in data.items()
                                if k in ("bazaar_total_resources", "agent_tools",
                                         "x402_list", "nanogpt_quote")}}
@@ -373,9 +403,28 @@ def main():
         log("prework skipped:", e)
 
 
+def rerender():
+    """Regenerate every page from stored state — no payment, no new text."""
+    state = json.loads(STATE.read_text())
+    for d in state["days"]:
+        if "briefing_text" not in d:
+            log(f"skip {d['date']}: no stored text (pre-restyle entry)")
+            continue
+        (OUT_DIR / f"{d['date']}.html").write_text(day_page(
+            d["date"], d["headline"], d["briefing_text"], d["opinion_text"],
+            d.get("payments") or [{"amount_xno": d["spent_xno"], "block": b,
+                                   "model": d["model"], "merchant": "nano-gpt.com"}
+                                  for b in d["blocks"]],
+            d.get("data") or d.get("data_snapshot") or {}))
+        log(f"re-rendered {d['date']}")
+    totals = state["totals"]
+    (OUT_DIR / "index.html").write_text(index_page(state["days"], totals))
+    log("re-rendered index")
+
+
 if __name__ == "__main__":
     try:
-        main()
+        rerender() if "--rerender" in sys.argv else main()
     except Exception as e:
         log(f"FATAL — no page published: {type(e).__name__}: {e}")
         sys.exit(1)
