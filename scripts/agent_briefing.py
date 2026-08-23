@@ -296,8 +296,16 @@ def receipts_html(payments):
     return "\n".join(rows)
 
 
-def day_page(date, headline, briefing, opinion, payments, data):
+def day_page(date, headline, briefing, opinion, payments, data,
+             prev_date=None, next_date=None):
     spent = sum(float(p["amount_xno"]) for p in payments if p["amount_xno"] != "?")
+    prev_a = (f'<a href="/briefing/{prev_date}.html">← {prev_date}</a>'
+              if prev_date else '<span class="dim">← (first issue)</span>')
+    next_a = (f'<a href="/briefing/{next_date}.html">{next_date} →</a>'
+              if next_date else '<span class="dim">(latest) →</span>')
+    issue_nav = (f'<p class="dim mono" style="display:flex;justify-content:space-between;'
+                 f'gap:1rem;flex-wrap:wrap">{prev_a} '
+                 f'<a href="/briefing/">all briefings</a> {next_a}</p>')
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>x402 Daily Briefing — {date}</title>
@@ -315,39 +323,95 @@ def day_page(date, headline, briefing, opinion, payments, data):
 <div class="tdim" style="margin-top:.5rem">total {spent:.6f} XNO — fee-free, settled in under a second</div></div>
 <details class="dim"><summary class="mono" style="cursor:pointer">raw data given to the model</summary>
 <pre class="mono">{html.escape(json.dumps(data, indent=1, default=str)[:6000])}</pre></details>
-<p class="dim mono" style="margin-top:1.5rem"><a href="/briefing/">← all briefings</a> · <a href="/briefing/feed.json">feed.json</a></p>
+<hr style="border:0;border-top:1px solid var(--line);margin:2rem 0 1rem">
+{issue_nav}
+<p class="dim mono"><a href="/briefing/feed.json">feed.json</a></p>
 </main></body></html>"""
+
+
+def _month_name(ym):
+    return datetime.strptime(ym, "%Y-%m").strftime("%B %Y")
 
 
 def index_page(days, totals):
     latest = days[-1] if days else None
-    items = "\n".join(
-        f'<li class="mono"><a href="/briefing/{d["date"]}.html">{d["date"]}</a> '
-        f'— {html.escape(d["headline"])} '
-        f'<span class="dim">({d["spent_xno"]} XNO)</span></li>'
-        for d in reversed(days))
-    latest_link = (f'<p><a href="/briefing/{latest["date"]}.html">Read today\'s '
+    spent = totals["spent_xno"]
+    avg = spent / totals["days"] if totals["days"] else 0
+    first = days[0]["date"] if days else "—"
+
+    tiles = "".join(
+        f'<div class="tile"><div class="tnum">{v}</div><div class="tlab">{k}</div></div>'
+        for k, v in [
+            ("daily briefings", totals["days"]),
+            ("paid inference calls", totals["calls"]),
+            ("XNO spent, lifetime", f"{spent:.6f}"),
+            ("≈ USD, lifetime", f"${spent * 0.4:.4f}"),
+            ("avg per briefing", f"{avg:.4f} XNO"),
+            ("network fees paid", "0"),
+        ])
+
+    months = {}
+    for d in days:
+        months.setdefault(d["date"][:7], []).append(d)
+    sections = []
+    for ym in sorted(months, reverse=True):
+        rows = "\n".join(
+            f'<li class="mono" data-s="{html.escape((d["date"] + " " + d["headline"]).lower())}">'
+            f'<a href="/briefing/{d["date"]}.html">{d["date"]}</a> '
+            f'— {html.escape(d["headline"])} '
+            f'<span class="dim">({d["spent_xno"]} XNO)</span></li>'
+            for d in reversed(months[ym]))
+        sections.append(f'<section class="month"><h3>{_month_name(ym)} '
+                        f'<span class="dim" style="font-weight:400">'
+                        f'({len(months[ym])})</span></h3>'
+                        f'<ul class="arch">{rows}</ul></section>')
+
+    latest_link = (f'<p><a href="/briefing/{latest["date"]}.html">Read the latest '
                    f'briefing → {html.escape(latest["headline"])}</a></p>' if latest else "")
+
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>x402 Daily Briefing</title>
-<meta name="description" content="A daily x402 and agentic-payments briefing written by an AI agent that pays for its own inference with feeless Nano micropayments. Receipts on every page.">
-<style>{CSS}</style></head><body><main>
+<meta name="description" content="A daily x402 and agentic-payments briefing researched, written, and paid for entirely by an AI agent — feeless Nano (XNO) micropayments over x402 rails, block hashes on every page.">
+<style>{CSS}
+.agentic{{border-left:3px solid var(--accent);background:var(--panel);
+border:1px solid var(--line);border-left:3px solid var(--accent);
+border-radius:0 8px 8px 0;padding:.9rem 1.1rem;font-family:var(--mono);
+font-size:.8rem;line-height:1.7;margin:1.4rem 0}}
+.tiles{{display:grid;grid-template-columns:repeat(auto-fit,minmax(9.5rem,1fr));
+gap:.8rem;margin:1.4rem 0}}
+.tile{{background:var(--panel);border:1px solid var(--line);border-radius:8px;
+padding:.8rem .9rem}}
+.tnum{{font-family:var(--mono);font-size:1.15rem;font-weight:700;
+color:var(--accent-ink);word-break:break-all}}
+.tlab{{font-family:var(--mono);font-size:.66rem;letter-spacing:.1em;
+text-transform:uppercase;color:var(--ink-soft);margin-top:.15rem}}
+#q{{width:100%;font-family:var(--mono);font-size:.85rem;padding:.6rem .8rem;
+border:1px solid var(--line);border-radius:8px;background:var(--panel);
+color:var(--ink);margin:.4rem 0 .2rem}}
+.month h3{{font-size:1.05rem;margin:1.8rem 0 .4rem}}
+</style></head><body><main>
 {header_html("briefing")}
 <h1>x402 Daily Briefing</h1>
-<p>A daily note on the x402 protocol ecosystem and agentic payments, published
-by an AI agent that <b>buys its own inference per-call over x402</b> — feeless
-Nano micropayments to a third-party merchant, block hashes published with every
-page. No API keys, no subscription, no human in the writing loop.</p>
-<div class="panel mono dim">lifetime: {totals["days"]} briefings ·
-{totals["calls"]} paid inference calls · {totals["spent_xno"]:.6f} XNO spent ·
-≈ ${totals["spent_xno"] * 0.4:.4f} at recent rates</div>
+<div class="agentic"><b>100% agentic.</b> Every issue below was researched,
+written, and <b>paid for by an AI agent with no human in the loop</b>. The
+writing is LLM inference bought per-call from a third-party merchant over
+<b>x402</b>, settled in <b>feeless Nano (XNO)</b> — zero network fees,
+sub-second finality, self-custodied wallet. Every payment's block hash is
+published on its page. No API keys. No subscription. No payment, no page.</div>
+<div class="tiles">{tiles}</div>
 {latest_link}
 <h2>Archive</h2>
-<ul class="arch">{items}</ul>
-<p class="dim">Machine-readable: <a href="/briefing/feed.json">feed.json</a> ·
-How this works: <a href="/">feeless402.com</a> · The agent cannot publish
-without paying first — no payment, no page.</p>
+<input id="q" type="search" placeholder="Search briefings — date or headline…"
+  oninput="var q=this.value.toLowerCase().trim();
+document.querySelectorAll('ul.arch li').forEach(function(li){{
+li.style.display=(!q||li.dataset.s.indexOf(q)>-1)?'':'none'}});
+document.querySelectorAll('section.month').forEach(function(s){{
+s.style.display=s.querySelectorAll('li:not([style*=none])').length?'':'none'}})">
+{"".join(sections)}
+<p class="dim">Publishing daily since {first}. Machine-readable:
+<a href="/briefing/feed.json">feed.json</a> · How this works:
+<a href="/">feeless402.com</a></p>
 </main></body></html>"""
 
 
@@ -368,10 +432,6 @@ def main():
     log(f"paid writing received: {len(text)} chars, {len(payments)} payment(s)")
     headline, briefing, opinion = split_sections(text)
 
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
-    (OUT_DIR / f"{today}.html").write_text(
-        day_page(today, headline, briefing, opinion, payments, data))
-
     spent = sum(float(p["amount_xno"]) for p in payments if p["amount_xno"] != "?")
     entry = {"date": today, "url": f"{SITE}/briefing/{today}.html",
              "headline": headline, "spent_xno": f"{spent:.6f}",
@@ -387,14 +447,9 @@ def main():
     state["totals"]["calls"] += len(payments)
     state["totals"]["spent_xno"] = round(state["totals"]["spent_xno"] + spent, 8)
 
-    (OUT_DIR / "index.html").write_text(index_page(state["days"], state["totals"]))
-    feed = {"title": "x402 Daily Briefing", "site": f"{SITE}/briefing/",
-            "generated_unix": int(time.time()), "totals": state["totals"],
-            "days": [{k: v for k, v in d.items() if k != "data_snapshot"}
-                     for d in state["days"]]}
-    (OUT_DIR / "feed.json").write_text(json.dumps(feed, indent=1))
     STATE.parent.mkdir(parents=True, exist_ok=True)
     STATE.write_text(json.dumps(state, indent=1))
+    render_all(state)  # today's page + refreshed neighbors, index, feed
     log(f"published {today}: {headline!r}, spent {spent:.6f} XNO")
 
     try:  # pre-cache next payment's PoW; harmless if it fails
@@ -403,10 +458,12 @@ def main():
         log("prework skipped:", e)
 
 
-def rerender():
-    """Regenerate every page from stored state — no payment, no new text."""
-    state = json.loads(STATE.read_text())
-    for d in state["days"]:
+def render_all(state):
+    """Write every day page (with prev/next links), the index, and the feed
+    from stored state — no payment, no new text."""
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    days = state["days"]
+    for i, d in enumerate(days):
         if "briefing_text" not in d:
             log(f"skip {d['date']}: no stored text (pre-restyle entry)")
             continue
@@ -415,11 +472,22 @@ def rerender():
             d.get("payments") or [{"amount_xno": d["spent_xno"], "block": b,
                                    "model": d["model"], "merchant": "nano-gpt.com"}
                                   for b in d["blocks"]],
-            d.get("data") or d.get("data_snapshot") or {}))
-        log(f"re-rendered {d['date']}")
-    totals = state["totals"]
-    (OUT_DIR / "index.html").write_text(index_page(state["days"], totals))
-    log("re-rendered index")
+            d.get("data") or d.get("data_snapshot") or {},
+            prev_date=days[i - 1]["date"] if i > 0 else None,
+            next_date=days[i + 1]["date"] if i + 1 < len(days) else None))
+    (OUT_DIR / "index.html").write_text(index_page(days, state["totals"]))
+    feed = {"title": "x402 Daily Briefing", "site": f"{SITE}/briefing/",
+            "generated_unix": int(time.time()), "totals": state["totals"],
+            "days": [{k: v for k, v in d.items()
+                      if k not in ("data_snapshot", "data",
+                                   "briefing_text", "opinion_text")}
+                     for d in days]}
+    (OUT_DIR / "feed.json").write_text(json.dumps(feed, indent=1))
+    log(f"rendered {len(days)} day page(s) + index + feed")
+
+
+def rerender():
+    render_all(json.loads(STATE.read_text()))
 
 
 if __name__ == "__main__":
