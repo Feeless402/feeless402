@@ -228,13 +228,11 @@ def _faucet_funding() -> dict:
     Three kinds of deposit: our own top-ups, grants an agent didn't spend
     and sent back, and donations from people who owed us nothing.
     """
-    try:
-        hist = (rpc.call({"action": "account_history",
-                          "account": faucet_wallet.address,
-                          "count": "500"}).get("history") or [])
-    except Exception:
-        return {"donations": None, "donated_xno": None,
-                "returned_grants": None, "recent": [], "address": None}
+    # No try/except: an RPC failure must RAISE so _cached() serves the last
+    # good funding block instead of caching this None-shaped placeholder.
+    hist = (rpc.call({"action": "account_history",
+                      "account": faucet_wallet.address,
+                      "count": "500"}).get("history") or [])
     ours = _self_addresses()
     claimants = set(_ledger().get("addresses", {}))
     donations, returned, donated_raw = [], 0, 0
@@ -495,10 +493,11 @@ def _stats_data():
     day_ago = time.time() - 86400
 
     def _bal(w):
-        try:
-            return round(float(raw_to_xno(w.synced_account(rpc).raw_bal)), 6)
-        except Exception:
-            return None
+        # Raises on RPC trouble — deliberately. _cached() turns a raise into
+        # "keep the last good value, retry in fail_ttl"; returning None here
+        # instead would CACHE the None as if it were data, and the page shows
+        # a wall of dashes for the whole TTL (the Aug 15 blank-out).
+        return round(float(raw_to_xno(w.synced_account(rpc).raw_bal)), 6)
 
     faucet_bal = _cached("faucet_bal", 300, lambda: _bal(faucet_wallet))
     per_claim = float(FAUCET_XNO)
@@ -602,7 +601,7 @@ STATS_HTML = """<title>Stats — Feeless402</title>
 <main>
   <header>
     <div class="brand"><a href="/"><b>feeless402</b></a> / stats</div>
-    <nav><a href="/">Home</a><a href="/docs.html">Docs</a><a href="/faucet.html">Faucet</a><a href="/stats">Stats</a><a href="https://railhint.com" target="_blank" rel="noopener">Spec</a><a href="/llms.txt">llms.txt</a></nav>
+    <nav><a href="/">Home</a><a href="/docs.html">Docs</a><a href="/faucet.html">Faucet</a><a href="/stats">Stats</a><a href="https://railhint.com" target="_blank" rel="noopener">Spec</a><a href="/llms.txt">llms.txt</a><a href="/.well-known/agent-card.json">A2A</a></nav>
   </header>
 
   <h1>Live usage</h1>
@@ -777,6 +776,10 @@ def create_app() -> FastAPI:
             "## Top up for real work\n"
             "nano-pay topup 5 --asset USDC-BASE --execute\n"
             "# $5 of USDC ≈ 100,000+ micro-calls at this endpoint's price\n\n"
+            "## Agent interfaces (read-only, no wallet)\n"
+            f"MCP (streamable HTTP): {SITE_URL}/mcp\n"
+            f"A2A agent (JSON-RPC): {SITE_URL}/a2a — card at "
+            f"{SITE_URL}/.well-known/agent-card.json\n\n"
             f"Docs: {DOCS_URL}\nSpec: x402 exact scheme, nano:mainnet\n"
             "x402 is stewarded by the Linux Foundation's x402 Foundation "
             "(premier members incl. Coinbase, Cloudflare, Stripe, Google, "

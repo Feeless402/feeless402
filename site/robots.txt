@@ -2,3 +2,5 @@ User-agent: *
 Allow: /
 
 # For AI agents: https://feeless402.com/llms.txt
+# A2A agent card: https://feeless402.com/.well-known/agent-card.json
+# Remote MCP endpoint: https://feeless402.com/mcp
