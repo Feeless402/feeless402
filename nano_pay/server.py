@@ -601,7 +601,7 @@ STATS_HTML = """<title>Stats — Feeless402</title>
 <main>
   <header>
     <div class="brand"><a href="/"><b>feeless402</b></a> / stats</div>
-    <nav><a href="/">Home</a><a href="/docs.html">Docs</a><a href="/faucet.html">Faucet</a><a href="/stats">Stats</a><a href="https://railhint.com" target="_blank" rel="noopener">Spec</a><a href="/llms.txt">llms.txt</a><a href="/.well-known/agent-card.json">A2A</a></nav>
+    <nav><a href="/">Home</a><a href="/docs.html">Docs</a><a href="/faucet.html">Faucet</a><a href="/stats">Stats</a><a href="/briefing/">Briefing</a><a href="https://railhint.com" target="_blank" rel="noopener">Spec</a><a href="/llms.txt">llms.txt</a><a href="/.well-known/agent-card.json">A2A</a></nav>
   </header>
 
   <h1>Live usage</h1>
@@ -777,6 +777,8 @@ def create_app() -> FastAPI:
             "nano-pay topup 5 --asset USDC-BASE --execute\n"
             "# $5 of USDC ≈ 100,000+ micro-calls at this endpoint's price\n\n"
             "## Agent interfaces (read-only, no wallet)\n"
+            f"Daily agent-written x402 briefing + feed: {SITE_URL}/briefing/ "
+            f"(machine-readable: {SITE_URL}/briefing/feed.json)\n"
             f"MCP (streamable HTTP): {SITE_URL}/mcp\n"
             f"A2A agent (JSON-RPC): {SITE_URL}/a2a — card at "
             f"{SITE_URL}/.well-known/agent-card.json\n\n"

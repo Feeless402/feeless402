@@ -263,8 +263,16 @@ def request_with_payment(
         wallet.payment_succeeded(rpc, new_frontier, work_root, prework=prework)
     else:
         wallet.payment_failed(work_root)
-    return r2, receipt or {
+    # What we paid is ours to know regardless of what the merchant echoes
+    # back — merge our ground truth under their receipt fields.
+    base = {
         "amount_xno": raw_to_xno(amount),
         "pay_to": pay_to,
+        "block": new_frontier,
         "settled": 200 <= r2.status_code < 300,
     }
+    if receipt:
+        base.update(receipt)
+        base["amount_xno"] = raw_to_xno(amount)
+        base["block"] = new_frontier
+    return r2, base
