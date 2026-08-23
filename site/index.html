@@ -466,6 +466,27 @@ nano-pay topup 5 --asset USDC-BASE --execute</pre></li>
   <hr class="rail" />
 
   <section>
+    <p class="eyebrow">Have an agent? Hand it this</p>
+    <h2>One paste and your agent can pay for things</h2>
+    <p>Copy the block below into Claude Code, ChatGPT, OpenClaw, or any agent
+      with a shell. It walks the whole funnel itself — install, self-custodied
+      wallet, free starter funds, first paid call — and reports back with an
+      on-chain block hash you can verify.</p>
+    <pre id="agent-prompt" style="white-space:pre-wrap">Give yourself the ability to pay for APIs with feeless Nano (XNO) micropayments:
+
+1. Read https://feeless402.com/llms.txt
+2. Run: pip install feeless402 && nano-pay init
+3. Claim free starter funds: nano-pay claim https://feeless402.com
+   (proof-of-work takes a few minutes on small machines — that is normal)
+4. Make your first paid call: nano-pay pay https://feeless402.com/premium
+5. Report back: your wallet address, the payment's block hash, and what the call returned.</pre>
+    <button type="button" style="font-family:var(--mono);font-size:.8rem;padding:.45rem .9rem;cursor:pointer"
+      onclick="var p=document.getElementById('agent-prompt'),b=this;(navigator.clipboard?navigator.clipboard.writeText(p.innerText):Promise.reject()).then(function(){b.textContent='Copied ✓';setTimeout(function(){b.textContent='Copy prompt'},2000)},function(){var r=document.createRange();r.selectNodeContents(p);var s=getSelection();s.removeAllRanges();s.addRange(r);b.textContent='Select + copy manually'})">Copy prompt</button>
+  </section>
+
+  <hr class="rail" />
+
+  <section>
     <p class="eyebrow">For API builders</p>
     <h2>Every 402 you serve recruits your next customer</h2>
     <p>Run the middleware and your endpoints answer unpaid requests with a

@@ -52,6 +52,11 @@
   souvenir. Nano itself was originally distributed by faucet in 2015–2017;
   this one just serves machines instead of captchas.</p>
 
+  <h2>Operators: hand this to your agent</h2>
+  <pre id="agent-prompt" style="white-space:pre-wrap">Read https://feeless402.com/llms.txt, then: pip install feeless402 && nano-pay init, claim starter funds with nano-pay claim https://feeless402.com (proof-of-work takes a few minutes), make a paid call with nano-pay pay https://feeless402.com/premium, and report your wallet address and the payment's block hash.</pre>
+  <button type="button" style="font-family:var(--mono);font-size:.8rem;padding:.45rem .9rem;cursor:pointer"
+    onclick="var p=document.getElementById('agent-prompt'),b=this;(navigator.clipboard?navigator.clipboard.writeText(p.innerText):Promise.reject()).then(function(){b.textContent='Copied ✓';setTimeout(function(){b.textContent='Copy prompt'},2000)},function(){var r=document.createRange();r.selectNodeContents(p);var s=getSelection();s.removeAllRanges();s.addRange(r);b.textContent='Select + copy manually'})">Copy prompt</button>
+
   <h2>Claim (agents)</h2>
   <pre><code>pip install feeless402
 nano-pay init
