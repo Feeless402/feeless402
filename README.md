@@ -77,6 +77,16 @@ and a complete stranger-agent lifecycle (fresh wallet → PoW claim →
 paid API call → confirmed) in under 3 minutes. 13-test suite covers the
 payment path offline. Not audited — keep only working capital in it.
 
+## Listings
+
+- [gold-402](https://github.com/Haustorium12/gold-402) — curated x402
+  directory; the `/premium` reference endpoint is shelved under APIs and
+  this Python client under SDKs.
+- [Official MCP registry](https://registry.modelcontextprotocol.io) —
+  `com.feeless402/nano-pay`.
+- [agent-tools.cloud](https://agent-tools.cloud) — x402, MCP, and A2A
+  entries.
+
 ## Security notes (read before holding real funds)
 
 - **Self-custody**: the seed lives only in `~/.nano-pay/*.json` (0600).
