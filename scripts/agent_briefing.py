@@ -428,6 +428,15 @@ def main():
 
     wallet = Wallet().load()
     rpc = RPC()
+    try:
+        # A top-up sent to this wallet is invisible to the balance check until
+        # a receive block pockets it (the Aug 24 outage: 0.1 XNO sat pending
+        # while the run died on "insufficient balance").
+        got = wallet.receive_all(rpc, prework=True)
+        if got:
+            log(f"pocketed {len(got)} pending receivable(s)")
+    except Exception as e:
+        log(f"receive_all failed (continuing on current balance): {e}")
     text, payments = think(data, yesterday, wallet, rpc)
     log(f"paid writing received: {len(text)} chars, {len(payments)} payment(s)")
     headline, briefing, opinion = split_sections(text)
