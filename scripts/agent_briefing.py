@@ -266,6 +266,7 @@ def header_html(sub):
             '<nav><a href="/">Home</a><a href="/docs.html">Docs</a>'
             '<a href="/faucet.html">Faucet</a><a href="/stats">Stats</a>'
             '<a href="/briefing/">Briefing</a>'
+            '<a href="/audits/">Audits</a>'
             '<a href="https://railhint.com" target="_blank" rel="noopener">Spec</a>'
             '<a href="/llms.txt">llms.txt</a>'
             '<a href="/.well-known/agent-card.json">A2A</a></nav></header>')
