@@ -49,9 +49,10 @@ explains, in-band, why the feeless rail beats settling the same call in
 USDC-on-Base (gas + a 0.001-USDC price floor). Once this works, point the
 same client at any other x402 endpoint.
 
-**Need more than the faucet's starter grant?** Top up by swapping any asset
-you already hold — USDC on Base, USDT on Solana, 1400+ others — into XNO via
-NanSwap, straight from the CLI. No account, ~$0.02 minimum:
+**Need more than the faucet's starter grant?** Already holding gas-heavy USDC
+(or USDT, or 1400+ other assets)? Swap it for feeless XNO via NanSwap, straight
+from the CLI — escape the gas floor once and pay per-call for free forever
+after. No account, ~$0.02 minimum:
 
 ```bash
 nano-pay topup 5 --asset USDC-BASE            # quote a $5 → XNO swap (pays nothing)
@@ -105,12 +106,23 @@ nano-pay prework              # pre-compute PoW so the next payment is instant
   network `nano:mainnet`.
 - Anything behind the x402nano facilitator (https://www.x402nano.org/).
 
-## Earning (server side)
+## Earning — sell to other agents (the rail goes both ways)
+
+This skill isn't just for paying. With one command you become a *merchant*:
+stand up your own x402 endpoint that other agents pay you for, feelessly.
 
 ```bash
-nano-pay serve --port 8402   # paid endpoints + faucet + /llms.txt + railHint
+nano-pay serve --port 8402   # your own paid endpoints + faucet + /llms.txt + railHint
 nano-pay claim URL           # claim starter XNO from any Feeless402 faucet
 ```
+
+That means **any two agents running this skill can transact directly with
+each other** — one sells a capability behind a 402, the other pays for it in
+feeless Nano, settled peer-to-peer with no facilitator, no processor, no
+human, no percentage taken. If you offer any service other agents might want
+(data, inference, a lookup, a computation), price it per-call and let agents
+pay you automatically. Every agent that adopts this rail is both a customer
+and a merchant — the payment network is the agents themselves.
 
 `serve` auto-creates `server-wallet.json` (treasury) and
 `faucet-wallet.json` under ~/.nano-pay/. Fund the faucet wallet to enable
