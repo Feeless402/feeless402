@@ -214,12 +214,24 @@ def _claim_one(base, w):
     """Claim from one faucet, solving its PoW challenge if it has one."""
     import requests as rq
 
-    base = base.rstrip("/")
+    # Accept the site root, the /faucet endpoint itself, or either with a
+    # query string (e.g. ``https://feeless402.com/faucet?ref=skill`` as the
+    # skill docs show) — normalize to the root and carry the query along so
+    # attribution tags survive.
+    from urllib.parse import parse_qsl, urlsplit
+
+    u = urlsplit(base)
+    path = u.path.rstrip("/")
+    if path.endswith("/faucet"):
+        path = path[: -len("/faucet")]
+    base = f"{u.scheme}://{u.netloc}{path}"
+    extra = dict(parse_qsl(u.query))
+    extra.pop("address", None)
     payload = {"address": w.address}
     try:
         ch = rq.get(
             f"{base}/faucet/challenge",
-            params={"address": w.address},
+            params={**extra, "address": w.address},
             timeout=30,
         ).json()
         if ch.get("pow_required"):
@@ -242,7 +254,7 @@ def _claim_one(base, w):
                   file=sys.stderr, flush=True)
     except Exception:
         pass  # no challenge endpoint — plain claim
-    r = rq.post(f"{base}/faucet", json=payload, timeout=240)
+    r = rq.post(f"{base}/faucet", params=extra or None, json=payload, timeout=240)
     try:
         return r.status_code, r.json()
     except Exception:

@@ -1169,8 +1169,17 @@ def create_app() -> FastAPI:
         }
 
     @app.get("/faucet")
-    def faucet_info():
+    def faucet_info(request: Request):
         """A human clicking a pasted /faucet link gets a signpost, not a 405."""
+        # Rescue for nano-pay <= 0.2.3 clients given a faucet URL that carries
+        # a query string (SKILL.md's ``claim https://feeless402.com/faucet?ref=skill``):
+        # they naively append "/faucet/challenge" and arrive here as
+        # ``/faucet?ref=skill/faucet/challenge&address=nano_…``. Serve them the
+        # challenge they meant to ask for instead of the signpost.
+        qs = str(request.url.query)
+        addr = request.query_params.get("address", "")
+        if "/faucet/challenge" in qs and addr.startswith("nano_"):
+            return faucet_challenge(addr)
         return {
             "how": "POST JSON {\"address\": \"nano_...\", \"work\": \"...\"} "
                    "— GET /faucet/challenge first for the PoW root",
