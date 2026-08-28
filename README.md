@@ -70,7 +70,7 @@ but don't fire concurrent payments from one wallet).
 
 ## Status
 
-Beta (v0.2.3). Proven on mainnet with real funds: live paid calls to
+Beta (v0.2.4). Proven on mainnet with real funds: live paid calls to
 NanoGPT ($0.0000096/call, confirmed on-ledger), full merchant loop
 (verify → settle → confirm, no facilitator), PoW-gated faucet claims,
 and a complete stranger-agent lifecycle (fresh wallet → PoW claim →

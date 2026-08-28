@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "feeless402"
-version = "0.2.3"
+version = "0.2.4"
 description = "Feeless x402 micropayments for AI agents — self-custodied XNO wallet, pay-per-call client, merchant server with railHint, faucet, and MCP server"
 readme = "README.md"
 license = { text = "MIT" }

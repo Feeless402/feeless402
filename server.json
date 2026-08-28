@@ -2,7 +2,7 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "com.feeless402/nano-pay",
   "description": "Pay for x402-priced APIs with feeless, sub-second Nano (XNO) micropayments from a local wallet.",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "websiteUrl": "https://feeless402.com",
   "repository": {
     "url": "https://github.com/Feeless402/feeless402",
@@ -12,7 +12,7 @@
     {
       "registryType": "pypi",
       "identifier": "feeless402",
-      "version": "0.2.3",
+      "version": "0.2.4",
       "runtimeHint": "uvx",
       "transport": {
         "type": "stdio"
