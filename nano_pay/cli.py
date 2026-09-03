@@ -9,7 +9,7 @@ from . import raw_to_xno, xno_to_raw
 from .rpc import RPC
 from .topup import TopupError, create_order, estimate, limits
 from .wallet import Wallet, WalletError
-from .x402 import PriceCapExceeded, X402Error, request_with_payment
+from .x402 import PaidRequestFailed, PriceCapExceeded, X402Error, request_with_payment
 
 DEFAULT_MAX_PAY_XNO = "0.05"  # per-payment safety cap unless overridden
 
@@ -425,6 +425,11 @@ def main():
     args = p.parse_args()
     try:
         args.fn(args)
+    except PaidRequestFailed as e:
+        # The payment may have landed even though the request failed —
+        # surface the receipt so the caller can check before paying again.
+        out({"error": str(e), "paid": e.receipt.get("settled"),
+             "payment": e.receipt}, code=1)
     except (WalletError, X402Error, PriceCapExceeded) as e:
         out({"error": str(e)}, code=1)
 

@@ -24,6 +24,67 @@ class PriceCapExceeded(X402Error):
     pass
 
 
+class PaidRequestFailed(X402Error):
+    """The request failed AFTER a signed payment block was handed to the
+    merchant and no HTTP response came back. `receipt` carries the block
+    hash and the ledger's verdict: settled True means the money moved and
+    only the reply was lost — re-present the SAME block, never pay again;
+    "indeterminate" means the ledger does not show it yet — check the hash
+    before doing anything else. An outcome that could not be determined is
+    never reported as "did not happen" (x402 #3208)."""
+
+    def __init__(self, msg, receipt):
+        super().__init__(msg)
+        self.receipt = receipt
+
+
+def _ledger_verdict(rpc, block_hash: str, wait: float = 0.0):
+    """Ask the ledger about a block we signed. Returns "confirmed",
+    "present" (seen, not yet confirmed) or None (not found / unreachable).
+    `wait` bounds how long to keep looking for a block that may still be
+    propagating."""
+    import time
+
+    deadline = time.time() + wait
+    verdict = None
+    while True:
+        try:
+            info = rpc.call(
+                {"action": "block_info", "json_block": "true", "hash": block_hash}
+            )
+            if isinstance(info, dict) and "contents" in info:
+                verdict = (
+                    "confirmed"
+                    if str(info.get("confirmed")).lower() == "true"
+                    else "present"
+                )
+        except Exception:
+            verdict = None
+        if verdict == "confirmed" or time.time() >= deadline:
+            return verdict
+        time.sleep(0.5)
+
+
+def _settle_outcome(rpc, block_hash: str, status_code):
+    """Decide what to tell the caller once the merchant has answered (or
+    failed to). The ledger, not the HTTP reply, is the truth.
+
+    Returns (settled, ledger): settled is True, False or "indeterminate".
+    """
+    if status_code is not None and 200 <= status_code < 300:
+        return True, "merchant"
+    # An explicit 402 is a refusal — the merchant says it never broadcast.
+    # Trust it only after one look at the ledger (a re-presented block that
+    # already landed is refused as "not the payer's frontier").
+    explicit_refusal = status_code == 402
+    ledger = _ledger_verdict(rpc, block_hash, wait=0.0 if explicit_refusal else 3.0)
+    if ledger:
+        return True, ledger
+    if explicit_refusal:
+        return False, "absent"
+    return "indeterminate", "absent"
+
+
 def _b64_json(obj) -> str:
     return base64.b64encode(json.dumps(obj).encode()).decode()
 
@@ -246,9 +307,28 @@ def request_with_payment(
     headers["PAYMENT-SIGNATURE"] = pay_header
     headers["X-PAYMENT"] = pay_header
 
-    r2 = requests.request(
-        method, url, headers=headers, timeout=120, **req_kwargs
-    )
+    try:
+        r2 = requests.request(
+            method, url, headers=headers, timeout=120, **req_kwargs
+        )
+    except requests.RequestException as e:
+        # The block is in the merchant's hands and we got no answer. The
+        # money may well have moved — only the ledger knows.
+        settled, ledger = _settle_outcome(rpc, new_frontier, None)
+        if settled is True:
+            wallet.payment_succeeded(rpc, new_frontier, work_root, prework=False)
+        else:
+            wallet.payment_failed(work_root)
+        base = {
+            "amount_xno": raw_to_xno(amount),
+            "pay_to": pay_to,
+            "block": new_frontier,
+            "settled": settled,
+            "ledger": ledger,
+            "note": _OUTCOME_NOTE[settled],
+        }
+        raise PaidRequestFailed(f"no reply from merchant: {e}", base) from e
+
     receipt = None
     rec_hdr = r2.headers.get("payment-response") or r2.headers.get(
         "x-payment-response"
@@ -259,7 +339,8 @@ def request_with_payment(
         except Exception:
             receipt = {"raw_header": rec_hdr}
 
-    if 200 <= r2.status_code < 300:
+    settled, ledger = _settle_outcome(rpc, new_frontier, r2.status_code)
+    if settled is True:
         wallet.payment_succeeded(rpc, new_frontier, work_root, prework=prework)
     else:
         wallet.payment_failed(work_root)
@@ -269,10 +350,24 @@ def request_with_payment(
         "amount_xno": raw_to_xno(amount),
         "pay_to": pay_to,
         "block": new_frontier,
-        "settled": 200 <= r2.status_code < 300,
+        "settled": settled,
+        "ledger": ledger,
     }
+    if settled is not True or ledger != "merchant":
+        base["note"] = _OUTCOME_NOTE[settled]
     if receipt:
         base.update(receipt)
         base["amount_xno"] = raw_to_xno(amount)
         base["block"] = new_frontier
+        base["settled"] = settled
     return r2, base
+
+
+_OUTCOME_NOTE = {
+    True: "payment is on the ledger; if the merchant did not deliver, "
+          "re-present this SAME block — do not pay again",
+    False: "merchant refused and the ledger does not hold the block; "
+           "nothing was paid",
+    "indeterminate": "no confirmation from merchant or ledger; check this "
+                     "block hash before paying again — do NOT re-pay blind",
+}

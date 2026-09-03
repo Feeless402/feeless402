@@ -87,9 +87,45 @@ def verify_block(block: dict, amount_raw: int, pay_to_addr: str, rpc) -> str:
     return payer
 
 
+def block_hash(block: dict) -> str:
+    """Hash of a state block. Computable before broadcast, so the ledger —
+    not the RPC reply — can be the source of truth for whether it landed."""
+    b = nanopy.StateBlock(
+        nanopy.Account(addr=block["account"]),
+        nanopy.Account(addr=block["representative"]),
+        int(block["balance"]),
+        str(block["previous"]).upper(),
+        str(block["link"]).upper(),
+        sig=block.get("signature", ""),
+        work=block.get("work", ""),
+    )
+    return b.hash_.upper()
+
+
+def _in_ledger(rpc, h: str) -> bool:
+    try:
+        info = rpc.call({"action": "block_info", "json_block": "true", "hash": h})
+    except Exception:
+        return False
+    return isinstance(info, dict) and "contents" in info
+
+
 def settle_block(block: dict, rpc, confirm_timeout=8.0) -> dict:
-    """Broadcast the verified block and poll for confirmation."""
-    h = rpc.process(block, "send")
+    """Broadcast the verified block and poll for confirmation.
+
+    A rejected or lost broadcast is NOT proof the block did not land: a node
+    that already holds it answers "Old block" (or its subtype pre-check), and
+    a timeout after acceptance looks identical to a failure. Since the hash
+    is known before broadcast, ask the ledger before calling it a failure —
+    an outcome that could not be determined must never be reported as
+    "did not happen" (x402 #3208 receiver obligation).
+    """
+    h = block_hash(block)
+    try:
+        rpc.process(block, "send")
+    except Exception:
+        if not _in_ledger(rpc, h):
+            raise
     _seen_previous[str(block["previous"]).upper()] = time.time()
     confirmed = False
     deadline = time.time() + confirm_timeout

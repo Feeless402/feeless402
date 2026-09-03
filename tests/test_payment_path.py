@@ -13,7 +13,13 @@ import pytest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from nano_pay import raw_to_xno, xno_to_raw
-from nano_pay.verify import PaymentInvalid, _seen_previous, verify_block
+from nano_pay.verify import (
+    PaymentInvalid,
+    _seen_previous,
+    block_hash,
+    settle_block,
+    verify_block,
+)
 from nano_pay.x402 import (
     PriceCapExceeded,
     X402Error,
@@ -214,3 +220,83 @@ def test_price_cap_math():
     quote_amount = xno_to_raw("0.06")
     cap = xno_to_raw("0.05")
     assert quote_amount > cap  # request_with_payment refuses in this case
+
+
+# ---------- settle_block: the ledger, not the RPC reply, decides ----------
+
+
+class SettleRPC(FakeRPC):
+    """process() fails; block_info answers from `ledger` (hash -> confirmed)."""
+
+    def __init__(self, ledger, process_error="Old block"):
+        super().__init__("A" * 64, 10**30)
+        self.ledger = ledger
+        self.process_error = process_error
+        self.process_calls = 0
+
+    def process(self, block, subtype):
+        self.process_calls += 1
+        raise RuntimeError(self.process_error)
+
+    def call(self, payload):
+        h = payload["hash"].upper()
+        if h not in self.ledger:
+            raise RuntimeError("Block not found")
+        return {"contents": {}, "confirmed": "true" if self.ledger[h] else "false"}
+
+
+def test_settle_old_block_is_settled_not_failed(payment):
+    block, _ = payment
+    h = block_hash(block)
+    rpc = SettleRPC({h: True})
+    receipt = settle_block(block, rpc, confirm_timeout=1)
+    assert receipt["success"] and receipt["hash"] == h and receipt["confirmed"]
+    assert rpc.process_calls == 1
+    assert block["previous"].upper() in _seen_previous
+
+
+def test_settle_failure_with_block_absent_still_raises(payment):
+    block, _ = payment
+    rpc = SettleRPC({})  # nothing in the ledger -> a real failure
+    with pytest.raises(RuntimeError):
+        settle_block(block, rpc, confirm_timeout=1)
+    assert block["previous"].upper() not in _seen_previous
+
+
+# ---------- client: what to tell the caller when the reply is not 2xx ----------
+
+from nano_pay.x402 import _settle_outcome
+
+
+class LedgerRPC:
+    def __init__(self, verdict):  # None | "present" | "confirmed"
+        self.verdict = verdict
+
+    def call(self, payload):
+        if self.verdict is None:
+            raise RuntimeError("Block not found")
+        return {"contents": {}, "confirmed": "true" if self.verdict == "confirmed" else "false"}
+
+
+def test_outcome_2xx_is_settled():
+    assert _settle_outcome(LedgerRPC(None), "AB" * 32, 200) == (True, "merchant")
+
+
+def test_outcome_402_absent_is_not_paid():
+    assert _settle_outcome(LedgerRPC(None), "AB" * 32, 402) == (False, "absent")
+
+
+def test_outcome_402_but_block_landed_is_settled():
+    # re-presented block: merchant refuses "not the payer's frontier", ledger has it
+    assert _settle_outcome(LedgerRPC("confirmed"), "AB" * 32, 402) == (True, "confirmed")
+
+
+def test_outcome_lost_reply_block_landed_is_settled():
+    assert _settle_outcome(LedgerRPC("confirmed"), "AB" * 32, None) == (True, "confirmed")
+
+
+def test_outcome_lost_reply_block_absent_is_indeterminate(monkeypatch):
+    import nano_pay.x402 as x
+    monkeypatch.setattr(x.time, "sleep", lambda s: None) if hasattr(x, "time") else None
+    settled, ledger = _settle_outcome(LedgerRPC(None), "AB" * 32, 500)
+    assert settled == "indeterminate" and ledger == "absent"

@@ -40,6 +40,10 @@ nano-pay pay   https://nano-gpt.com/api/v1/chat/completions \
 v1 dialect) → price-cap check → sign a send state block locally → retry
 with `PAYMENT-SIGNATURE` + `X-PAYMENT` headers. The server settles the
 block via its facilitator; nothing is broadcast unless the server accepts.
+If the merchant's reply is lost or is not a 2xx, the client asks the
+ledger about the block hash it signed before reporting anything: the
+receipt's `settled` is `true`, `false`, or `"indeterminate"`, never a
+guess. A block that landed is never re-paid — re-present the same one.
 
 ## Design notes
 
@@ -70,11 +74,11 @@ but don't fire concurrent payments from one wallet).
 
 ## Status
 
-Beta (v0.2.4). Proven on mainnet with real funds: live paid calls to
+Beta (v0.2.5). Proven on mainnet with real funds: live paid calls to
 NanoGPT ($0.0000096/call, confirmed on-ledger), full merchant loop
 (verify → settle → confirm, no facilitator), PoW-gated faucet claims,
 and a complete stranger-agent lifecycle (fresh wallet → PoW claim →
-paid API call → confirmed) in under 3 minutes. 13-test suite covers the
+paid API call → confirmed) in under 3 minutes. 20-test suite covers the
 payment path offline. Not audited — keep only working capital in it.
 
 ## Listings
