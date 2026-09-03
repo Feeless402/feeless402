@@ -18,11 +18,14 @@ mkdir -p "$OUT"
 # exist, plus the Sourcer's Desk blog console (posts/subscribers DB, smtp
 # creds, editor+templates), its console password file, the nginx vhosts
 # (none of these live in any repo), and the live sites themselves.
-tar czf - \
-  --exclude='sourcerdesk-blog/.venv' \
-  -C /root .nano-pay vane/logs/live sourcerdesk-blog sourcersdesk-launch \
+# tar exit 1 = "file changed as we read it" (live DBs mid-write) — archive is still
+# written and usable; only exit >=2 (real error) may abort the script.
+{ tar czf - \
+  --exclude='sourcerdesk-blog/.venv' --exclude='ad-call/actor/.venv' \
+  -C /root .nano-pay vane/logs/live sourcerdesk-blog sourcersdesk-launch sourcersdesk-api ad-call apify-token.env \
   -C /etc nginx/sites-available nginx/.sourcerdesk_htpasswd \
-  -C /var/www sourcerdesk feeless402 2>/dev/null \
+  -C /var/www sourcerdesk feeless402 \
+  || [ $? -eq 1 ]; } \
   | openssl enc -aes-256-cbc -pbkdf2 -salt -pass "file:$PASS" \
   > "$OUT/f402-$STAMP.tar.gz.enc"
 
