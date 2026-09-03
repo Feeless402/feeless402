@@ -278,8 +278,15 @@ class LedgerRPC:
         return {"contents": {}, "confirmed": "true" if self.verdict == "confirmed" else "false"}
 
 
-def test_outcome_2xx_is_settled():
-    assert _settle_outcome(LedgerRPC(None), "AB" * 32, 200) == (True, "merchant")
+def test_outcome_2xx_confirmed_on_ledger_is_settled():
+    assert _settle_outcome(LedgerRPC("confirmed"), "AB" * 32, 200) == (True, "confirmed")
+
+
+def test_outcome_2xx_but_ledger_absent_is_indeterminate(monkeypatch):
+    # declared_safe: the merchant says success, the chain has no block
+    import time as _t
+    monkeypatch.setattr(_t, "sleep", lambda s: None)
+    assert _settle_outcome(LedgerRPC(None), "AB" * 32, 200) == ("indeterminate", "absent")
 
 
 def test_outcome_402_absent_is_not_paid():

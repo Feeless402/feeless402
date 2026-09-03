@@ -72,7 +72,13 @@ def _settle_outcome(rpc, block_hash: str, status_code):
     Returns (settled, ledger): settled is True, False or "indeterminate".
     """
     if status_code is not None and 200 <= status_code < 300:
-        return True, "merchant"
+        # A 2xx is the merchant's word, not the ledger's. A forged or mistaken
+        # success must not become a receipt that says "paid" (declared_safe
+        # mode of the #3208 retry-safety battery).
+        ledger = _ledger_verdict(rpc, block_hash, wait=3.0)
+        if ledger:
+            return True, ledger
+        return "indeterminate", "absent"
     # An explicit 402 is a refusal — the merchant says it never broadcast.
     # Trust it only after one look at the ledger (a re-presented block that
     # already landed is refused as "not the payer's frontier").
@@ -353,13 +359,23 @@ def request_with_payment(
         "settled": settled,
         "ledger": ledger,
     }
-    if settled is not True or ledger != "merchant":
+    if settled is not True:
         base["note"] = _OUTCOME_NOTE[settled]
     if receipt:
-        base.update(receipt)
+        # The merchant's receipt must be about OUR block. A different hash
+        # means the receipt is forged or belongs to someone else's payment;
+        # keep their fields for the record but never let them speak for ours.
+        theirs = str(receipt.get("hash") or receipt.get("transaction") or "").upper()
+        if theirs and theirs != new_frontier.upper():
+            base["receipt_hash_mismatch"] = True
+            base["note"] = ("merchant receipt names a different block than the one "
+                            "we signed — treat the receipt as untrusted; "
+                            "the ledger verdict above is what counts")
+        base.update({k: v for k, v in receipt.items()
+                     if k not in ("settled", "block", "amount_xno", "note",
+                                  "ledger", "receipt_hash_mismatch")})
         base["amount_xno"] = raw_to_xno(amount)
         base["block"] = new_frontier
-        base["settled"] = settled
     return r2, base
 
 
