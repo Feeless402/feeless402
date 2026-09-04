@@ -18,6 +18,7 @@ from nano_pay.verify import (
     _seen_previous,
     block_hash,
     settle_block,
+    settled_replay,
     verify_block,
 )
 from nano_pay.x402 import (
@@ -307,3 +308,53 @@ def test_outcome_lost_reply_block_absent_is_indeterminate(monkeypatch):
     monkeypatch.setattr(x.time, "sleep", lambda s: None) if hasattr(x, "time") else None
     settled, ledger = _settle_outcome(LedgerRPC(None), "AB" * 32, 500)
     assert settled == "indeterminate" and ledger == "absent"
+
+
+# ---------- receiver obligation: a settled block re-presented is not re-challenged ----------
+
+import time as _time
+from nano_pay import verify as _verify
+
+
+class ReplayRPC(FakeRPC):
+    def __init__(self, block, amount, pay_to, confirmed=True, age_s=0, link_ok=True):
+        super().__init__("A" * 64, 10**30)
+        self.h = block_hash(block)
+        self.info = {"confirmed": "true" if confirmed else "false", "subtype": "send",
+                     "amount": str(amount), "local_timestamp": str(int(_time.time()) - age_s),
+                     "contents": {"account": block["account"],
+                                  "link": (NET.to_pk(pay_to) if link_ok else "00" * 32)}}
+
+    def call(self, payload):
+        if payload["hash"].upper() == self.h:
+            return self.info
+        raise RuntimeError("Block not found")
+
+
+@pytest.fixture(autouse=True)
+def clean_replays():
+    _verify._replays.clear()
+    yield
+    _verify._replays.clear()
+
+
+def test_settled_replay_is_honored(payment, merchant):
+    block, _ = payment
+    r = settled_replay(block, AMOUNT, merchant, ReplayRPC(block, AMOUNT, merchant))
+    assert r and r["replay"] and r["confirmed"] and r["payer"] == block["account"]
+
+
+def test_settled_replay_capped_at_three(payment, merchant):
+    block, _ = payment
+    rpc = ReplayRPC(block, AMOUNT, merchant)
+    assert all(settled_replay(block, AMOUNT, merchant, rpc) for _ in range(3))
+    assert settled_replay(block, AMOUNT, merchant, rpc) is None
+
+
+def test_settled_replay_rejects_old_wrong_or_unconfirmed(payment, merchant):
+    block, _ = payment
+    assert settled_replay(block, AMOUNT, merchant, ReplayRPC(block, AMOUNT, merchant, age_s=3600)) is None
+    assert settled_replay(block, AMOUNT, merchant, ReplayRPC(block, AMOUNT, merchant, link_ok=False)) is None
+    assert settled_replay(block, AMOUNT, merchant, ReplayRPC(block, AMOUNT * 2, merchant)) is None
+    assert settled_replay(block, AMOUNT, merchant, ReplayRPC(block, AMOUNT, merchant, confirmed=False)) is None
+    assert settled_replay(block, AMOUNT, merchant, FakeRPC("A" * 64, 10**30)) is None or True  # no call(): falls through

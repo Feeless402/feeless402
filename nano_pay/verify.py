@@ -110,6 +110,50 @@ def _in_ledger(rpc, h: str) -> bool:
     return isinstance(info, dict) and "contents" in info
 
 
+# Re-presented authorizations already honored: hash -> times served.
+_replays: dict = {}
+REPLAY_WINDOW_S = 15 * 60   # a block confirmed longer ago than this is history, not a retry
+REPLAY_MAX = 3              # a crashed client needs one re-delivery; three is generous
+
+
+def settled_replay(block: dict, amount_raw: int, pay_to_addr: str, rpc):
+    """Receiver obligation (x402 #3325 §5.3.5): an authorization that has
+    already settled is answered with its settled state — and the resource —
+    never with a fresh challenge.
+
+    A client that paid, then died before reading the reply, re-presents the
+    SAME signed block on restart. Refusing it ("previous is not the payer's
+    frontier") is exactly the fresh challenge that turns one purchase into
+    two. So: if the presented block's hash is confirmed on the ledger, pays
+    this server, and carries the price, return a receipt for it.
+
+    Block contents are public once confirmed, so a third party could replay
+    one too. Two bounds keep that to a curiosity: only blocks confirmed
+    within REPLAY_WINDOW_S qualify, and each hash is honored REPLAY_MAX
+    times. Returns a receipt dict (with 'payer') or None to fall through to
+    normal verification."""
+    try:
+        h = block_hash(block)
+        info = rpc.call({"action": "block_info", "json_block": "true", "hash": h})
+    except Exception:
+        return None
+    if not isinstance(info, dict) or str(info.get("confirmed")).lower() != "true":
+        return None
+    c = info.get("contents") or {}
+    if str(c.get("link", "")).upper() != NET.to_pk(pay_to_addr).upper():
+        return None
+    if info.get("subtype") != "send" or int(info.get("amount") or 0) != amount_raw:
+        return None
+    ts = int(info.get("local_timestamp") or 0)
+    if ts and time.time() - ts > REPLAY_WINDOW_S:
+        return None
+    if _replays.get(h, 0) >= REPLAY_MAX:
+        return None
+    _replays[h] = _replays.get(h, 0) + 1
+    return {"success": True, "hash": h, "confirmed": True,
+            "network": "nano:mainnet", "replay": True, "payer": c.get("account", "")}
+
+
 def settle_block(block: dict, rpc, confirm_timeout=8.0) -> dict:
     """Broadcast the verified block and poll for confirmation.
 

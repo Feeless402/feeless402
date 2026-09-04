@@ -24,7 +24,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 
 from . import __version__, raw_to_xno, xno_to_raw
 from .rpc import RPC
-from .verify import PaymentInvalid, settle_block, verify_block
+from .verify import PaymentInvalid, settle_block, settled_replay, verify_block
 from .wallet import DEFAULT_DIR, Wallet
 
 SITE_URL = os.environ.get("F402_SITE_URL", "https://feeless402.com")
@@ -811,13 +811,21 @@ def create_app() -> FastAPI:
                     {"error": "payment invalid: malformed block"},
                     status_code=402,
                 )
-            payer = verify_block(
-                block, price_raw, server_wallet.address, rpc
-            )
-            receipt = settle_block(block, rpc)
-            _count_paid_call(payer, demo_wallet.address)
-            _reclassify_if_farm(payer)
-            _maybe_graduate(payer)
+            # §5.3.5: a re-presented, already-settled block is answered with
+            # its settled state and the resource — not a fresh 402. Counted
+            # nothing: the payment was tallied when it first settled.
+            replay = settled_replay(block, price_raw, server_wallet.address, rpc)
+            if replay:
+                payer = replay.pop("payer")
+                receipt = replay
+            else:
+                payer = verify_block(
+                    block, price_raw, server_wallet.address, rpc
+                )
+                receipt = settle_block(block, rpc)
+                _count_paid_call(payer, demo_wallet.address)
+                _reclassify_if_farm(payer)
+                _maybe_graduate(payer)
         except PaymentInvalid as e:
             return JSONResponse(
                 {"error": f"payment invalid: {e}"}, status_code=402
@@ -916,10 +924,15 @@ def create_app() -> FastAPI:
                     {"error": "payment invalid: malformed block"},
                     status_code=402,
                 )
-            demo_payer = verify_block(
-                block, price_raw, server_wallet.address, rpc)
-            receipt = settle_block(block, rpc)
-            _count_paid_call(demo_payer, demo_wallet.address)
+            replay = settled_replay(block, price_raw, server_wallet.address, rpc)
+            if replay:
+                demo_payer = replay.pop("payer")
+                receipt = replay
+            else:
+                demo_payer = verify_block(
+                    block, price_raw, server_wallet.address, rpc)
+                receipt = settle_block(block, rpc)
+                _count_paid_call(demo_payer, demo_wallet.address)
         except PaymentInvalid as e:
             return JSONResponse(
                 {"error": f"payment invalid: {e}"}, status_code=402
