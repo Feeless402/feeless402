@@ -99,26 +99,70 @@ def _from_b64_json(s: str):
     return json.loads(base64.b64decode(s))
 
 
+_OFFER_LIST_KEYS = ("accepts", "accepted", "payment")
+
+
+def _parse_header_quote(hdr: str):
+    try:
+        return _from_b64_json(hdr)
+    except Exception:
+        try:
+            return json.loads(hdr)
+        except Exception as e:
+            raise X402Error(f"unparseable payment-required header: {e}")
+
+
 def parse_quote(resp) -> dict:
-    """Extract the PaymentRequirements object from a 402 response."""
+    """Extract the PaymentRequirements object from a 402 response.
+
+    Merchants disagree about where the quote lives: some put the whole
+    requirements object in the `payment-required` header, some put it in
+    the JSON body, and some (NanoGPT since Sep 2026) put a *single* offer
+    in the header while the body carries the full `accepts` list. Read
+    both and union the offers so no rail the server actually accepts is
+    hidden from `pick_nano_offer`.
+    """
     hdr = resp.headers.get("payment-required") or resp.headers.get(
         "x-payment-required"
     )
-    if hdr:
-        try:
-            return _from_b64_json(hdr)
-        except Exception:
-            try:
-                return json.loads(hdr)
-            except Exception as e:
-                raise X402Error(f"unparseable payment-required header: {e}")
+    hdr_quote = _parse_header_quote(hdr) if hdr else None
+    if isinstance(hdr_quote, dict) and not any(
+        k in hdr_quote for k in _OFFER_LIST_KEYS
+    ):
+        # A bare offer object, not a requirements envelope: wrap it.
+        if "scheme" in hdr_quote or "payTo" in hdr_quote:
+            hdr_quote = {"x402Version": 1, "accepts": [hdr_quote]}
+
+    body_quote = None
     try:
-        return resp.json()
+        body_quote = resp.json()
     except Exception:
+        pass
+    if not isinstance(body_quote, dict) or not collect_offers(body_quote):
+        body_quote = None
+
+    if hdr_quote is None and body_quote is None:
         raise X402Error(
             f"402 response with no parseable quote "
             f"(headers: {list(resp.headers)}, body: {resp.text[:200]})"
         )
+    if body_quote is None:
+        return hdr_quote
+    if hdr_quote is None or not collect_offers(hdr_quote):
+        return body_quote
+
+    # Both carry offers: keep the body envelope (it has the richer
+    # paymentId/statusUrl fields) and append header offers it lacks.
+    merged = dict(body_quote)
+
+    def _key(o):
+        return o.get("paymentId") or json.dumps(o, sort_keys=True)
+
+    seen = {_key(o) for o in collect_offers(merged)}
+    extra = [o for o in collect_offers(hdr_quote) if _key(o) not in seen]
+    if extra:
+        merged["accepts"] = list(merged.get("accepts") or []) + extra
+    return merged
 
 
 def collect_offers(quote: dict) -> list:

@@ -358,3 +358,74 @@ def test_settled_replay_rejects_old_wrong_or_unconfirmed(payment, merchant):
     assert settled_replay(block, AMOUNT, merchant, ReplayRPC(block, AMOUNT * 2, merchant)) is None
     assert settled_replay(block, AMOUNT, merchant, ReplayRPC(block, AMOUNT, merchant, confirmed=False)) is None
     assert settled_replay(block, AMOUNT, merchant, FakeRPC("A" * 64, 10**30)) is None or True  # no call(): falls through
+
+
+# --- parse_quote: header carries a single foreign offer, body has the list ---
+
+class _Resp:
+    def __init__(self, headers, body, text=""):
+        self.headers = headers
+        self._body = body
+        self.text = text
+
+    def json(self):
+        if self._body is None:
+            raise ValueError("no json")
+        return self._body
+
+
+_NANO_BODY_OFFER = {
+    "scheme": "nano-exact", "protocolScheme": "exact", "network": "nano:mainnet",
+    "amount": "55043680000000000000000000000", "asset": "XNO",
+    "payTo": "nano_3njeurfzgpwpnqjxoytfnqa7ezbgkordga8e8jg74ey77kww5d5emjjyzrhp",
+    "paymentId": "pay_117199eee1dfecc1417311cd557bcc4f",
+}
+_SOLANA_HDR_OFFER = {
+    "scheme": "exact", "network": "solana",
+    "asset": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", "amount": "21629",
+    "payTo": "P16imsNyUZfMGDJTDV623AVgAPz4Zp2oBgZ9F8EbHe4",
+    "paymentId": "pay_b144f6158605b8dcdf67d01d9485ab95",
+}
+
+
+def test_parse_quote_single_offer_header_does_not_hide_body_offers():
+    """NanoGPT (Sep 2026) puts one Solana-USDC offer in X-Payment-Required
+    and the full accepts list, including Nano, in the body. The client must
+    still find the Nano offer."""
+    from nano_pay.x402 import collect_offers, parse_quote
+
+    r = _Resp(
+        {"x-payment-required": json.dumps(_SOLANA_HDR_OFFER)},
+        {"x402Version": 1, "payment": {"accepted": [_NANO_BODY_OFFER]},
+         "accepts": [_SOLANA_HDR_OFFER]},
+    )
+    q = parse_quote(r)
+    offers = collect_offers(q)
+    assert _NANO_BODY_OFFER in offers
+    assert sum(1 for o in offers if o == _SOLANA_HDR_OFFER) == 1  # not duplicated
+    assert pick_nano_offer(q)["payTo"] == _NANO_BODY_OFFER["payTo"]
+
+
+def test_parse_quote_header_only_single_offer_is_wrapped():
+    from nano_pay.x402 import collect_offers, parse_quote
+
+    r = _Resp({"payment-required": base64.b64encode(
+        json.dumps(_NANO_BODY_OFFER).encode()).decode()}, None, text="")
+    q = parse_quote(r)
+    assert collect_offers(q) == [_NANO_BODY_OFFER]
+
+
+def test_parse_quote_header_envelope_still_wins_when_body_has_no_offers():
+    from nano_pay.x402 import parse_quote
+
+    env = {"x402Version": 2, "accepts": [_NANO_BODY_OFFER], "resource": "/premium"}
+    r = _Resp({"payment-required": base64.b64encode(json.dumps(env).encode()).decode()},
+              {"error": "payment required"})
+    assert parse_quote(r) == env
+
+
+def test_parse_quote_nothing_parseable_raises():
+    from nano_pay.x402 import parse_quote
+
+    with pytest.raises(X402Error):
+        parse_quote(_Resp({}, {"error": "nope"}, text='{"error":"nope"}'))
