@@ -12,7 +12,7 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from nano_pay import raw_to_xno, xno_to_raw
+from nano_pay import AmountError, raw_to_xno, xno_to_raw
 from nano_pay.verify import (
     PaymentInvalid,
     _seen_previous,
@@ -429,3 +429,52 @@ def test_parse_quote_nothing_parseable_raises():
 
     with pytest.raises(X402Error):
         parse_quote(_Resp({}, {"error": "nope"}, text='{"error":"nope"}'))
+
+
+# --- XNO <-> raw conversion ------------------------------------------------
+# 1 raw = 10**-30 XNO. Both directions used to lose value silently: `int()`
+# truncated sub-raw input to 0, and the arithmetic ran in the ambient
+# `decimal` context (default precision 28) although raw spans 31 digits.
+# A round trip through the pair is what `amount_xno` receipts invite, so it
+# has to be lossless.
+
+_LOSSY_RAW = 300000000000000000000000000007  # 30 significant digits
+
+
+def test_raw_to_xno_keeps_all_digits_past_the_decimal_default_precision():
+    assert raw_to_xno(_LOSSY_RAW) == "0.300000000000000000000000000007"
+
+
+def test_xno_to_raw_keeps_all_digits_past_the_decimal_default_precision():
+    assert xno_to_raw("0.300000000000000000000000000007") == _LOSSY_RAW
+
+
+def test_conversion_round_trips_for_every_raw_size():
+    # Deterministic sweep over the whole range, including the 31-digit top.
+    for raw in (
+        1,
+        10,
+        10**9,
+        5 * 10**28,
+        _LOSSY_RAW,
+        10**30,
+        10**30 + 1,
+        9_999_999_999_999_999_999_999_999_999_999,
+    ):
+        assert xno_to_raw(raw_to_xno(raw)) == raw, raw
+
+
+def test_raw_to_xno_renders_whole_numbers_without_a_decimal_point():
+    assert raw_to_xno(10**30) == "1"
+    assert raw_to_xno(0) == "0"
+
+
+def test_sub_raw_amounts_are_refused_not_truncated_to_zero():
+    with pytest.raises(AmountError):
+        xno_to_raw("0.0000000000000000000000000000005")
+
+
+def test_negative_and_unparseable_amounts_are_refused():
+    for bad in ("-1", "abc", "", "nan", "inf"):
+        with pytest.raises(AmountError):
+            xno_to_raw(bad)
