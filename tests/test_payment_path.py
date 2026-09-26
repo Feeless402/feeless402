@@ -429,3 +429,51 @@ def test_parse_quote_nothing_parseable_raises():
 
     with pytest.raises(X402Error):
         parse_quote(_Resp({}, {"error": "nope"}, text='{"error":"nope"}'))
+
+
+# --- faucet claim amount: raw arithmetic must not replace xno_to_raw ------
+# `claims_remaining` is the number of XNO top-ups a faucet balance still
+# covers, so it is computed as `balance_raw // per_claim_raw`. Two call sites
+# built `per_claim_raw` with `int(float(FAUCET_CLAIM_XNO) * 10**30)` instead
+# of `xno_to_raw`. `float` cannot hold 0.0005 exactly, so the product rounded
+# to 500000000000000006643777536 raw — 6.6e9 raw too high — and a 5 XNO
+# balance reported 9999 remaining claims instead of 10000: the UI promised
+# one claim the faucet could not fund. The exact-conversion path already
+# existed and every other call site used it; these two had not been migrated.
+
+
+def test_faucet_per_claim_uses_exact_conversion_not_float_arithmetic():
+    """The typed value and the derived raw must agree exactly."""
+    from nano_pay.mcp_remote import FAUCET_CLAIM_XNO
+
+    per_claim = xno_to_raw(FAUCET_CLAIM_XNO)
+    assert per_claim == 500000000000000000000000000
+    # What the old expression produced, for contrast.
+    assert int(float(FAUCET_CLAIM_XNO) * 10**30) != per_claim
+
+
+def test_faucet_claims_remaining_does_not_over_report_by_one():
+    """A balance of exactly N claims must yield N, not N-1."""
+    from nano_pay.mcp_remote import FAUCET_CLAIM_XNO
+
+    per_claim = xno_to_raw(FAUCET_CLAIM_XNO)
+    balance = 10000 * per_claim  # exactly ten thousand claims' worth
+    assert balance // per_claim == 10000
+    # The lossy expression truncates the count by one for this balance.
+    assert balance // int(float(FAUCET_CLAIM_XNO) * 10**30) == 9999
+
+
+def test_faucet_remote_sources_do_not_do_float_raw_arithmetic():
+    """Guard the whole class: no module may build raw from a float product."""
+    import pathlib
+    import re
+
+    root = pathlib.Path(__file__).resolve().parent.parent / "nano_pay"
+    offenders = []
+    for py in sorted(root.glob("*.py")):
+        if py.name == "__init__.py":  # the conversion module itself
+            continue
+        for n, line in enumerate(py.read_text().splitlines(), 1):
+            if re.search(r"float\([^)]*\)\s*\*\s*10\s*\*\*\s*30", line):
+                offenders.append(f"{py.name}:{n}: {line.strip()}")
+    assert not offenders, "float-based raw conversion(s):\n" + "\n".join(offenders)
