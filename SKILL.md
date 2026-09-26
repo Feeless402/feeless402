@@ -58,7 +58,7 @@ nano-pay prework              # pre-compute PoW so the next payment is instant
   inference (also image/video models). POST with `x-x402: true` (the client
   sets this automatically). Nano option appears as scheme `exact`,
   network `nano:mainnet`.
-- Anything behind the x402nano facilitator (https://www.x402nano.org/).
+- Anything behind the x402nano facilitator (the `PAYMENT-REQUIRED` v2 dialect).
 
 ## Earning (server side)
 

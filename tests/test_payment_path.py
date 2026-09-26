@@ -526,3 +526,45 @@ def test_faucet_remote_sources_do_not_do_float_raw_arithmetic():
             if re.search(r"float\([^)]*\)\s*\*\s*10\s*\*\*\s*30", line):
                 offenders.append(f"{py.name}:{n}: {line.strip()}")
     assert not offenders, "float-based raw conversion(s):\n" + "\n".join(offenders)
+
+
+# --- railHint spec pointer -------------------------------------------------
+# The 402 `rail-hint.info.spec` field is a *pointer to the payment-scheme
+# specification*, and the canonical draft lives at railhint.com (see
+# SPEC-railhint.md and pyproject.toml's `Specification` URL). An earlier
+# revision pointed at x402nano.org, whose deployment is disabled, so every
+# agent that followed the hint landed on a dead page.
+
+_SPEC_URI = "https://railhint.com"
+
+
+def _server_module():
+    pytest.importorskip("fastapi", reason="needs the [server] extra")
+    from nano_pay import server as _server
+
+    return _server
+
+
+def test_rail_hint_spec_points_at_the_live_canonical_spec():
+    server = _server_module()
+    info = server.rail_hint(100_000_000_000_000)  # 0.0001 XNO
+    assert info["spec"] == _SPEC_URI
+
+
+def test_payment_required_body_spec_matches_rail_hint():
+    server = _server_module()
+    body = server.payment_required_body(
+        100_000_000_000_000,
+        "nano_3aysuejus8iy1hhw6doc7syzg1aaa6hgpec91xcc36mf6hp6thy7u6ymkgfm",
+        "https://feeless402.com/premium",
+    )
+    info = body["extensions"]["rail-hint"]["info"]
+    assert info["spec"] == _SPEC_URI
+    # One source of truth: the standalone helper must not drift from the body.
+    assert info == server.rail_hint(100_000_000_000_000)
+
+
+def test_rail_hint_avoids_known_dead_spec_hosts():
+    server = _server_module()
+    info = server.rail_hint(100_000_000_000_000)
+    assert "x402nano.org" not in json.dumps(info)
