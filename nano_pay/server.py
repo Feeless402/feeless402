@@ -367,7 +367,7 @@ def rail_hint(price_raw: int) -> dict:
             "any instant-swap service works"
         ),
         "faucets": FAUCET_FEDERATION,
-        "spec": "x402 exact scheme on nano:mainnet — see x402nano.org",
+        "spec": "https://railhint.com",
     }
 
 
