@@ -19,7 +19,7 @@ import requests
 from mcp.server.mcpserver import MCPServer
 from mcp.server.transport_security import TransportSecuritySettings
 
-from . import raw_to_xno
+from . import raw_to_xno, xno_to_raw
 from .rpc import RPC
 from .x402 import collect_offers, compare_rails, offer_amount_raw, parse_quote, pick_nano_offer
 
@@ -146,7 +146,7 @@ def faucet_info() -> str:
     rpc = RPC()
     info = rpc.account_info(FAUCET_ADDR) or {}
     bal = int(info.get("balance", 0))
-    per_claim = int(float(FAUCET_CLAIM_XNO) * 10**30)
+    per_claim = xno_to_raw(FAUCET_CLAIM_XNO)
     return json.dumps(
         {
             "faucet_address": FAUCET_ADDR,

@@ -19,7 +19,7 @@ import uuid
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from . import __version__, raw_to_xno
+from . import __version__, raw_to_xno, xno_to_raw
 from .mcp_remote import FAUCET_ADDR, FAUCET_CLAIM_XNO, _fetch_402
 from .rpc import RPC
 from .x402 import collect_offers, compare_rails, offer_amount_raw, parse_quote, pick_nano_offer
@@ -129,7 +129,7 @@ def _quote_and_compare(url: str, method: str = "GET", json_body: str = "") -> di
 def _faucet_info() -> dict:
     info = RPC().account_info(FAUCET_ADDR) or {}
     bal = int(info.get("balance", 0))
-    per_claim = int(float(FAUCET_CLAIM_XNO) * 10**30)
+    per_claim = xno_to_raw(FAUCET_CLAIM_XNO)
     return {
         "faucet_address": FAUCET_ADDR,
         "claim_xno": FAUCET_CLAIM_XNO,
