@@ -19,6 +19,7 @@ from urllib.parse import urlparse
 import requests
 
 from . import raw_to_xno
+from .verify import CONFIRM_WAIT_S
 
 
 class X402Error(Exception):
@@ -80,7 +81,7 @@ def _settle_outcome(rpc, block_hash: str, status_code):
         # A 2xx is the merchant's word, not the ledger's. A forged or mistaken
         # success must not become a receipt that says "paid" (declared_safe
         # mode of the #3208 retry-safety battery).
-        ledger = _ledger_verdict(rpc, block_hash, wait=3.0)
+        ledger = _ledger_verdict(rpc, block_hash, wait=CONFIRM_WAIT_S)
         if ledger:
             return True, ledger
         return "indeterminate", "absent"
@@ -88,7 +89,9 @@ def _settle_outcome(rpc, block_hash: str, status_code):
     # Trust it only after one look at the ledger (a re-presented block that
     # already landed is refused as "not the payer's frontier").
     explicit_refusal = status_code == 402
-    ledger = _ledger_verdict(rpc, block_hash, wait=0.0 if explicit_refusal else 3.0)
+    ledger = _ledger_verdict(
+        rpc, block_hash, wait=0.0 if explicit_refusal else CONFIRM_WAIT_S
+    )
     if ledger:
         return True, ledger
     if explicit_refusal:

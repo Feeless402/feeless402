@@ -310,6 +310,53 @@ def test_outcome_lost_reply_block_absent_is_indeterminate(monkeypatch):
     assert settled == "indeterminate" and ledger == "absent"
 
 
+# ---------- one wait for the whole path: the 3 s / 8 s split is a defect ----------
+
+def test_confirm_wait_is_one_value_for_both_paths():
+    """settle_block() and _settle_outcome() answer the same question about the
+    same block, so they must poll the ledger for the same time. They used to
+    differ (3 s here, 8 s there), which made a block confirmed at second 4
+    'confirmed' on the settle path and 'indeterminate' on the x402 path."""
+    import inspect
+    from nano_pay import verify as v
+    import nano_pay.x402 as x
+    assert v.CONFIRM_WAIT_S == x.CONFIRM_WAIT_S
+    default = inspect.signature(v.settle_block).parameters["confirm_timeout"].default
+    assert default == v.CONFIRM_WAIT_S
+
+
+def test_block_confirmed_after_3s_is_seen_by_both_paths(monkeypatch):
+    """A block that lands at second 4 is inside both budgets now. Drive
+    _ledger_verdict with a clock so the answer is decided by the wait, not by a
+    fixed verdict: at 3 s the block is not there yet, at 4 s it is."""
+    import nano_pay.verify as v
+    import nano_pay.x402 as x
+    assert v.CONFIRM_WAIT_S > 3.0  # the old x402 wait would have given up here
+
+    class SlowLedgerRPC:
+        """Answers 'confirmed' only from second 4 onward."""
+        def __init__(self, clock):
+            self.clock = clock
+
+        def call(self, payload):
+            if self.clock["t"] >= 4.0:
+                return {"contents": {}, "confirmed": "true"}
+            raise RuntimeError("Block not found")
+
+    # _ledger_verdict does `import time` inside the function, so patch the
+    # time module itself, not a module attribute.
+    import time as _time_mod
+    clock = {"t": 0.0}
+    monkeypatch.setattr(_time_mod, "time", lambda: clock["t"])
+    monkeypatch.setattr(_time_mod, "sleep", lambda s: clock.__setitem__("t", clock["t"] + s))
+    assert x._ledger_verdict(SlowLedgerRPC(clock), "AB" * 32, wait=x.CONFIRM_WAIT_S) == "confirmed"
+
+    # and the client outcome that used to give up at 3 s
+    clock["t"] = 0.0
+    settled, ledger = x._settle_outcome(SlowLedgerRPC(clock), "AB" * 32, 200)
+    assert settled is True and ledger == "confirmed"
+
+
 # ---------- receiver obligation: a settled block re-presented is not re-challenged ----------
 
 import time as _time
