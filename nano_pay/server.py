@@ -814,7 +814,10 @@ def create_app() -> FastAPI:
             # §5.3.5: a re-presented, already-settled block is answered with
             # its settled state and the resource — not a fresh 402. Counted
             # nothing: the payment was tallied when it first settled.
-            replay = settled_replay(block, price_raw, server_wallet.address, rpc)
+            replay = settled_replay(block, price_raw, server_wallet.address, rpc,
+                                    requester=_client_ip(request),
+                                    proof=request.headers.get("x-payment-proof"),
+                                    method=request.method, path=request.url.path)
             if replay:
                 payer = replay.pop("payer")
                 receipt = replay
@@ -924,7 +927,10 @@ def create_app() -> FastAPI:
                     {"error": "payment invalid: malformed block"},
                     status_code=402,
                 )
-            replay = settled_replay(block, price_raw, server_wallet.address, rpc)
+            replay = settled_replay(block, price_raw, server_wallet.address, rpc,
+                                    requester=_client_ip(request),
+                                    proof=request.headers.get("x-payment-proof"),
+                                    method=request.method, path=request.url.path)
             if replay:
                 demo_payer = replay.pop("payer")
                 receipt = replay

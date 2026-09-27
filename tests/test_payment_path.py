@@ -353,7 +353,9 @@ def test_settled_replay_capped_at_three(payment, merchant):
 
 def test_settled_replay_rejects_old_wrong_or_unconfirmed(payment, merchant):
     block, _ = payment
-    assert settled_replay(block, AMOUNT, merchant, ReplayRPC(block, AMOUNT, merchant, age_s=3600)) is None
+    # the window is 24 h since GHSA-cx37-j5vc-c967 (a retry at ~16 min came back paid-but-not-served)
+    assert settled_replay(block, AMOUNT, merchant, ReplayRPC(block, AMOUNT, merchant, age_s=25 * 3600)) is None
+    assert settled_replay(block, AMOUNT, merchant, ReplayRPC(block, AMOUNT, merchant, age_s=3600)) is not None
     assert settled_replay(block, AMOUNT, merchant, ReplayRPC(block, AMOUNT, merchant, link_ok=False)) is None
     assert settled_replay(block, AMOUNT, merchant, ReplayRPC(block, AMOUNT * 2, merchant)) is None
     assert settled_replay(block, AMOUNT, merchant, ReplayRPC(block, AMOUNT, merchant, confirmed=False)) is None

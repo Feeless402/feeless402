@@ -9,7 +9,12 @@ We parse whichever is present and send the payment in both headers.
 """
 
 import base64
+import hashlib
 import json
+import os
+import time
+from pathlib import Path
+from urllib.parse import urlparse
 
 import requests
 
@@ -299,6 +304,57 @@ def build_payment_header(quote: dict, offer: dict, block_dict: dict, pay_to: str
     return _b64_json(payload)
 
 
+# --- retry safety (GHSA-cx37-j5vc-c967, reported privately against 0.2.8) ----------------------------------------
+# A retry after a lost reply signed a SECOND block: one request, two charges. Now every payment is written to a small
+# journal next to the wallet BEFORE it is sent, and a retry — inside the same call or in a later call after a crash —
+# re-presents that same signed block. The merchant then either settles it (first time it arrives) or honors it as
+# already settled (x402 #3325 §5.3.5). A second block is signed only when the ledger shows the first never landed.
+JOURNAL_TTL_S = 24 * 3600
+SEND_ATTEMPTS = 3            # the first send plus two re-presentations of the same block within one call
+
+
+def _journal_path(wallet) -> Path:
+    base = Path(getattr(wallet, "path", "") or (Path.home() / ".nano-pay" / "wallet.json"))
+    return base.parent / "pending-payments.json"
+
+
+def _journal_load(wallet) -> dict:
+    try:
+        j = json.loads(_journal_path(wallet).read_text())
+    except Exception:
+        return {}
+    now = time.time()
+    return {k: v for k, v in j.items() if isinstance(v, dict) and now - float(v.get("t", 0)) < JOURNAL_TTL_S}
+
+
+def _journal_save(wallet, j: dict) -> None:
+    p = _journal_path(wallet)
+    try:
+        p.parent.mkdir(parents=True, exist_ok=True)
+        tmp = p.with_suffix(".tmp")
+        tmp.write_text(json.dumps(j, indent=1))
+        os.replace(tmp, p)
+    except Exception:
+        pass                   # a journal we cannot write degrades to the old behavior, never blocks a payment
+
+
+def _journal_key(method: str, url: str, pay_to: str, amount: int) -> str:
+    return hashlib.sha256(f"{method.upper()}|{url}|{pay_to}|{amount}".encode()).hexdigest()[:32]
+
+
+def _replay_message(block_hash: str, method: str, path: str) -> bytes:
+    return f"feeless402-replay:{block_hash.upper()}:{method.upper()}:{path or '/'}".encode()
+
+
+def replay_proof(account, block_hash: str, method: str, path: str) -> str:
+    """Proof that the party re-presenting a settled block is the one who signed it: the payer's own key signs
+    (block hash, method, path). A settled block is public, so anyone can re-present it; only the payer can sign
+    this — which is what stops an observer from using up the payer's retries. Sent as X-PAYMENT-PROOF."""
+    import nanopy
+    sig = nanopy.ext.sign(bytes.fromhex(account._sk), _replay_message(block_hash, method, path), os.urandom(32))
+    return base64.b64encode(json.dumps({"hash": block_hash.upper(), "sig": bytes(sig).hex()}).encode()).decode()
+
+
 def request_with_payment(
     method: str,
     url: str,
@@ -350,20 +406,44 @@ def request_with_payment(
             f"{raw_to_xno(max_raw)} XNO — refusing to pay"
         )
 
-    block, new_frontier, work_root = wallet.build_payment_block(
-        rpc, pay_to, amount
-    )
-    pay_header = build_payment_header(quote, offer, block, pay_to)
+    jkey = _journal_key(method, url, pay_to, amount)
+    journal = _journal_load(wallet)
+    entry = journal.get(jkey)
+    represented = bool(entry)
+    if entry:
+        # A payment for this exact request is already signed and may already have settled: re-present it.
+        pay_header, new_frontier, work_root = entry["header"], entry["hash"], entry.get("work_root", "")
+    else:
+        block, new_frontier, work_root = wallet.build_payment_block(
+            rpc, pay_to, amount
+        )
+        pay_header = build_payment_header(quote, offer, block, pay_to)
+        journal[jkey] = {"header": pay_header, "hash": new_frontier, "work_root": work_root,
+                         "url": url, "method": method.upper(), "t": time.time()}
+        _journal_save(wallet, journal)          # recorded BEFORE it leaves: a crash mid-send still re-presents it
     headers["PAYMENT-SIGNATURE"] = pay_header
     headers["X-PAYMENT"] = pay_header
-
     try:
-        r2 = requests.request(
-            method, url, headers=headers, timeout=120, **req_kwargs
-        )
-    except requests.RequestException as e:
+        headers["X-PAYMENT-PROOF"] = replay_proof(wallet.account(), new_frontier, method, urlparse(url).path)
+    except Exception:
+        pass
+
+    r2, last_err = None, None
+    for attempt in range(SEND_ATTEMPTS):
+        try:
+            r2 = requests.request(
+                method, url, headers=headers, timeout=120, **req_kwargs
+            )
+            break
+        except requests.RequestException as e:
+            last_err = e
+            if attempt + 1 < SEND_ATTEMPTS:
+                time.sleep(2 * (attempt + 1))   # same block again, never a new one
+    if r2 is None:
+        e = last_err
         # The block is in the merchant's hands and we got no answer. The
-        # money may well have moved — only the ledger knows.
+        # money may well have moved — only the ledger knows. The journal keeps
+        # the block, so the next call for this request re-presents it.
         settled, ledger = _settle_outcome(rpc, new_frontier, None)
         if settled is True:
             wallet.payment_succeeded(rpc, new_frontier, work_root, prework=False)
@@ -376,8 +456,27 @@ def request_with_payment(
             "settled": settled,
             "ledger": ledger,
             "note": _OUTCOME_NOTE[settled],
+            "will_re_present": True,
         }
         raise PaidRequestFailed(f"no reply from merchant: {e}", base) from e
+
+    if represented and r2.status_code == 402:
+        verdict = _ledger_verdict(rpc, new_frontier, wait=0.0)
+        if verdict:
+            # We paid (the ledger says so) and the merchant will not honor it: say so. Never pay twice.
+            raise PaidRequestFailed("merchant refused a payment that is already on the ledger (paid, not served)",
+                                    {"amount_xno": raw_to_xno(amount), "pay_to": pay_to, "block": new_frontier,
+                                     "settled": True, "ledger": verdict, "note": _OUTCOME_NOTE[True]})
+        # The earlier block never landed (and cannot now: a stale frontier). Only now is a fresh payment right.
+        journal.pop(jkey, None)
+        _journal_save(wallet, journal)
+        headers.pop("X-PAYMENT-PROOF", None)
+        return request_with_payment(method, url, wallet, rpc, max_raw, headers=headers,
+                                    dry_run=dry_run, prework=prework, **req_kwargs)
+
+    if 200 <= r2.status_code < 300 or r2.status_code == 402:
+        journal.pop(jkey, None)                 # served, or refused outright: nothing left to re-present
+        _journal_save(wallet, journal)
 
     receipt = None
     rec_hdr = r2.headers.get("payment-response") or r2.headers.get(

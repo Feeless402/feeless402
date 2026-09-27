@@ -110,13 +110,38 @@ def _in_ledger(rpc, h: str) -> bool:
     return isinstance(info, dict) and "contents" in info
 
 
-# Re-presented authorizations already honored: hash -> times served.
+# Re-presented authorizations already honored: (hash, who) -> times served.
 _replays: dict = {}
-REPLAY_WINDOW_S = 15 * 60   # a block confirmed longer ago than this is history, not a retry
-REPLAY_MAX = 3              # a crashed client needs one re-delivery; three is generous
+# GHSA-cx37-j5vc-c967: a retry at ~16 minutes fell outside the old 15-minute window and came back paid
+# but not served, and an observer who replayed the (public) settled block could use up its three honors before the
+# payer retried. Now: 24 hours, and the payer proves it is the payer (X-PAYMENT-PROOF, signed with the key that
+# signed the block) — such retries are always honored within the window and never counted against anyone else.
+# Without a proof (other clients), honors are counted per requester, so one observer cannot exhaust another's.
+REPLAY_WINDOW_S = 24 * 3600
+REPLAY_MAX = 3              # anonymous re-presentations per (hash, requester)
+REPLAY_MAX_ANON_TOTAL = 30  # anonymous re-presentations per hash across all requesters
+REPLAY_MAX_PROVEN = 100     # proven (payer-signed) re-presentations per hash — a runaway client, not a limit on honesty
 
 
-def settled_replay(block: dict, amount_raw: int, pay_to_addr: str, rpc):
+def verify_replay_proof(proof: str, payer_addr: str, h: str, method: str, path: str) -> bool:
+    """True when `proof` is the payer's own signature over (block hash, method, path)."""
+    if not proof or not payer_addr:
+        return False
+    try:
+        import base64 as _b64
+        import json as _json
+        d = _json.loads(_b64.b64decode(proof))
+        if str(d.get("hash", "")).upper() != h.upper():
+            return False
+        msg = f"feeless402-replay:{h.upper()}:{(method or 'GET').upper()}:{path or '/'}".encode()
+        pk = NET.to_pk(payer_addr) if str(payer_addr).startswith(("nano_", "xrb_")) else payer_addr
+        return bool(nanopy.ext.verify_signature(bytes.fromhex(d["sig"]), bytes.fromhex(pk), msg))
+    except Exception:
+        return False
+
+
+def settled_replay(block: dict, amount_raw: int, pay_to_addr: str, rpc,
+                   requester: str = None, proof: str = None, method: str = "GET", path: str = "/"):
     """Receiver obligation (x402 #3325 §5.3.5): an authorization that has
     already settled is answered with its settled state — and the resource —
     never with a fresh challenge.
@@ -128,10 +153,11 @@ def settled_replay(block: dict, amount_raw: int, pay_to_addr: str, rpc):
     this server, and carries the price, return a receipt for it.
 
     Block contents are public once confirmed, so a third party could replay
-    one too. Two bounds keep that to a curiosity: only blocks confirmed
-    within REPLAY_WINDOW_S qualify, and each hash is honored REPLAY_MAX
-    times. Returns a receipt dict (with 'payer') or None to fall through to
-    normal verification."""
+    one too. Only blocks confirmed within REPLAY_WINDOW_S qualify; a payer who
+    proves it signed the block is always honored inside that window; anyone
+    else is held to REPLAY_MAX per requester and REPLAY_MAX_ANON_TOTAL per hash.
+    Returns a receipt dict (with 'payer') or None to fall through to normal
+    verification."""
     try:
         h = block_hash(block)
         info = rpc.call({"action": "block_info", "json_block": "true", "hash": h})
@@ -147,11 +173,19 @@ def settled_replay(block: dict, amount_raw: int, pay_to_addr: str, rpc):
     ts = int(info.get("local_timestamp") or 0)
     if ts and time.time() - ts > REPLAY_WINDOW_S:
         return None
-    if _replays.get(h, 0) >= REPLAY_MAX:
-        return None
-    _replays[h] = _replays.get(h, 0) + 1
+    payer = c.get("account", "")
+    if verify_replay_proof(proof, payer, h, method, path):
+        key = (h, "payer")
+        if _replays.get(key, 0) >= REPLAY_MAX_PROVEN:
+            return None
+    else:
+        key = (h, requester or "?")
+        anon_total = sum(v for (hh, who), v in _replays.items() if hh == h and who != "payer")
+        if _replays.get(key, 0) >= REPLAY_MAX or anon_total >= REPLAY_MAX_ANON_TOTAL:
+            return None
+    _replays[key] = _replays.get(key, 0) + 1
     return {"success": True, "hash": h, "confirmed": True,
-            "network": "nano:mainnet", "replay": True, "payer": c.get("account", "")}
+            "network": "nano:mainnet", "replay": True, "payer": payer}
 
 
 def settle_block(block: dict, rpc, confirm_timeout=8.0) -> dict:
