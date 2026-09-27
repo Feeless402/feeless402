@@ -171,7 +171,7 @@ def settled_replay(block: dict, amount_raw: int, pay_to_addr: str, rpc,
     if info.get("subtype") != "send" or int(info.get("amount") or 0) != amount_raw:
         return None
     ts = int(info.get("local_timestamp") or 0)
-    if ts and time.time() - ts > REPLAY_WINDOW_S:
+    if not ts or time.time() - ts > REPLAY_WINDOW_S:   # unknown age fails closed
         return None
     payer = c.get("account", "")
     if verify_replay_proof(proof, payer, h, method, path):

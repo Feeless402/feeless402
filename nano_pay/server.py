@@ -308,11 +308,22 @@ def _block_shape_ok(block) -> bool:
     return isinstance(block, dict) and _BLOCK_KEYS <= set(block)
 
 
+# X-Real-IP / X-Forwarded-For are ordinary request headers, so they are
+# believed only when the connection itself comes from a trusted proxy (the
+# uvicorn convention; default loopback). Anyone else gets the socket address.
+TRUSTED_PROXIES = {
+    u.strip() for u in os.environ.get(
+        "F402_TRUSTED_PROXIES", "127.0.0.1,::1").split(",") if u.strip()}
+
+
 def _client_ip(request) -> str:
-    """Real client IP behind the nginx proxy (X-Real-IP), with fallbacks."""
+    """Real client IP: the forwarded headers from a trusted proxy, else the peer."""
+    peer = request.client.host if request.client else "unknown"
+    if peer not in TRUSTED_PROXIES and "*" not in TRUSTED_PROXIES:
+        return peer
     return (request.headers.get("x-real-ip")
             or request.headers.get("x-forwarded-for", "").split(",")[0].strip()
-            or (request.client.host if request.client else "unknown"))
+            or peer)
 
 
 # JSON Schema (Draft 2020-12) validating the rail-hint `info` object. Shipped

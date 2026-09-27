@@ -113,4 +113,9 @@ payment path offline. Not audited — keep only working capital in it.
 - **Merchant fork guard**: servers cache accepted frontiers and reject
   duplicate-frontier blocks; payer balance/frontier/signature are
   verified against the live ledger before settlement.
+- **Behind a proxy**: the merchant believes `X-Real-IP` /
+  `X-Forwarded-For` only from `F402_TRUSTED_PROXIES` (default
+  `127.0.0.1,::1`); any other peer is identified by its socket address.
+  If your reverse proxy runs on another host, add its address there, and
+  have it overwrite both headers (`proxy_set_header X-Real-IP $remote_addr;`).
 - Not audited. MIT — no warranty.

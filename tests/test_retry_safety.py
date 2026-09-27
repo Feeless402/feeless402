@@ -192,3 +192,31 @@ def test_forged_proof_is_not_accepted_as_the_payers():
         settled_replay(blk, 100, PAY_TO, rpc, requester="203.0.113.9", proof=bad, method="GET", path="/premium")
     # the forged proof counted as an anonymous replay from the observer's address, and ran out there
     assert settled_replay(blk, 100, PAY_TO, rpc, requester="203.0.113.9", proof=bad, method="GET", path="/premium") is None
+
+
+# --- 0.2.10: follow-ups from the external re-verification of 0.2.9 ------------------------------------------------
+class NoTimestampRPC(LedgerRPC):
+    def call(self, req):
+        info = super().call(req)
+        info.pop("local_timestamp")
+        return info
+
+
+def test_block_of_unknown_age_is_not_replayed():
+    """A node that omits local_timestamp must not switch the window off (was: honored at any age)."""
+    blk, _ = settled_block()
+    assert settled_replay(blk, 100, PAY_TO, NoTimestampRPC(blk, 25 * 3600)) is None
+
+
+class FakeRequest:
+    def __init__(self, peer, headers):
+        self.client = type("C", (), {"host": peer})()
+        self.headers = headers
+
+
+def test_forwarded_headers_from_a_stranger_are_ignored():
+    """A client talking to the app directly can't pick its own requester id by setting a header."""
+    from nano_pay.server import _client_ip
+    spoof = {"x-real-ip": "10.9.9.9", "x-forwarded-for": "10.8.8.8"}
+    assert _client_ip(FakeRequest("203.0.113.9", spoof)) == "203.0.113.9"
+    assert _client_ip(FakeRequest("127.0.0.1", spoof)) == "10.9.9.9"   # behind the local proxy
