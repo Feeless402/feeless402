@@ -50,7 +50,11 @@ in the same call or after a crash — re-sends the same signed block with an
 `X-PAYMENT-PROOF` header (the payer's signature over the block hash, method and
 path). The server honors a proven re-presentation for 24 hours, so an observer
 replaying a public block cannot use up the payer's retries. (v0.2.9; reported
-privately by an independent security researcher.)
+privately by [giskard09](https://github.com/giskard09), who also re-verified
+the fix with an independent harness — see advisory GHSA-cx37-j5vc-c967. v0.2.10
+adds two follow-ups from that re-verification: a block of unknown age is never
+treated as inside the window, and forwarded IP headers are trusted only from a
+configured proxy.)
 
 ## Design notes
 
@@ -81,11 +85,11 @@ but don't fire concurrent payments from one wallet).
 
 ## Status
 
-Beta (v0.2.9). Proven on mainnet with real funds: live paid calls to
+Beta (v0.2.10). Proven on mainnet with real funds: live paid calls to
 NanoGPT ($0.0000096/call, confirmed on-ledger), full merchant loop
 (verify → settle → confirm, no facilitator), PoW-gated faucet claims,
 and a complete stranger-agent lifecycle (fresh wallet → PoW claim →
-paid API call → confirmed) in under 3 minutes. 51-test suite covers the
+paid API call → confirmed) in under 3 minutes. 53-test suite covers the
 payment path offline. Not audited — keep only working capital in it.
 
 ## Listings
