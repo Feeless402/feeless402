@@ -23,7 +23,7 @@ never moves funds — it only reads.
 
 from dataclasses import dataclass, asdict
 
-from nano_pay.rpc import RPC
+from nano_pay.rpc import RPC, RPCError
 
 
 class NotFound(Exception):
@@ -32,6 +32,26 @@ class NotFound(Exception):
     def __init__(self, block_hash: str):
         self.block_hash = block_hash
         super().__init__(f"no block with hash {block_hash} on the ledger")
+
+
+class LedgerUnreachable(Exception):
+    """No node could be asked: the ledger's answer could not be determined.
+
+    Distinct from `NotFound` on purpose. `NotFound` is the ledger saying
+    "there is no such block"; this is the verifier saying "I could not ask".
+    A seller that ships on "settled" and refuses on "not settled" must not
+    treat an unreachable node as a refusal: the block may be confirmed while
+    every endpoint is down. An outcome that could not be determined is never
+    reported as "did not happen" (the same rule x402.py and verify.py state,
+    x402 #3208). Retry, or read the hash from another node, before giving up.
+    """
+
+    def __init__(self, detail: str = ""):
+        self.detail = detail
+        super().__init__(
+            "could not reach the ledger to check this block"
+            + (f": {detail}" if detail else "")
+        )
 
 
 class Mismatch(Exception):
@@ -62,17 +82,22 @@ class Receipt:
 
 def _lookup(block_hash: str, rpc_urls, timeout: float = 20.0) -> dict:
     """Ask the ledger for a block, returning the raw block_info reply or None
-    if the node says it does not know this hash."""
+    if the node says it does not know this hash.
+
+    A semantic "block not found" is the ledger answering; every other failure
+    (all endpoints down, timeout, HTTP error, bad JSON) means the ledger could
+    not be asked and raises `LedgerUnreachable`, so the caller never reads an
+    unreachable node as "this block is not on the ledger".
+    """
     rpc = RPC(urls=rpc_urls, timeout=timeout)
     try:
         return rpc.call(
             {"action": "block_info", "json_block": "true", "hash": block_hash}
         )
-    except Exception:
-        # RPC "block not found" is a semantic error and surfaces as an
-        # exception from the client's failover logic. Either way the hash is
-        # not on the ledger for this verifier's purposes.
-        return None
+    except RPCError as e:
+        if "block not found" in str(e).lower():
+            return None
+        raise LedgerUnreachable(str(e)) from e
 
 
 def verify(block_hash: str, expect_raw: int, account: str, rpc_url: str) -> Receipt:
@@ -81,6 +106,8 @@ def verify(block_hash: str, expect_raw: int, account: str, rpc_url: str) -> Rece
 
     Raises:
         NotFound: the node reports no block with this hash.
+        LedgerUnreachable: no node could be asked. Distinct from NotFound: the
+            block may be settled while every endpoint is down.
         Mismatch: the block is confirmed but the amount or destination differs
             from what was expected.
     """

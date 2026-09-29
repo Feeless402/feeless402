@@ -13,7 +13,8 @@ import pytest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from nano_pay import receipt
-from nano_pay.receipt import Mismatch, NotFound, Receipt, verify
+from nano_pay.receipt import LedgerUnreachable, Mismatch, NotFound, Receipt, verify
+from nano_pay.rpc import RPCError
 
 BLOCK_HASH = "A" * 64
 ACCOUNT = "nano_1puq5g8eqy1h8z1w9zqy6q7x9tq9y6u9t9y5p6q7x9tq9y6u9t9y5p6q7x9tq"
@@ -77,3 +78,21 @@ def test_receipt_to_json():
     assert '"height": 42' in j
     assert '"settled": true' in j
     assert 'account' in j and ACCOUNT in j
+
+
+def test_unreachable_node_is_not_a_missing_block(monkeypatch):
+    """No node could be asked -> LedgerUnreachable, never NotFound.
+
+    An unreachable node is an outcome that could not be determined, and must
+    not be reported as "did not happen" (the rule x402.py and verify.py state,
+    x402 #3208). A seller that refuses on NotFound would otherwise refuse a
+    payment that is settled while every endpoint is down.
+    """
+    monkeypatch.undo()   # leave the autouse no_network fake, use the real _lookup
+    # A closed loopback port: RPC.call raises RPCError("all RPC nodes failed, ..."),
+    # which is a transport failure, not the ledger answering "no such block".
+    with pytest.raises(LedgerUnreachable):
+        receipt._lookup(BLOCK_HASH, ["http://127.0.0.1:9/"], timeout=1.0)
+    with pytest.raises(LedgerUnreachable):
+        verify(BLOCK_HASH, 1000, ACCOUNT, "http://127.0.0.1:9/")
+
