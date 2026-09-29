@@ -122,6 +122,13 @@ REPLAY_MAX = 3              # anonymous re-presentations per (hash, requester)
 REPLAY_MAX_ANON_TOTAL = 30  # anonymous re-presentations per hash across all requesters
 REPLAY_MAX_PROVEN = 100     # proven (payer-signed) re-presentations per hash — a runaway client, not a limit on honesty
 
+# How long to keep polling the ledger for a block we signed before calling it
+# missing. ONE value for the whole payment path: this module's settle_block()
+# and x402._settle_outcome() both answer the same question ("did the money
+# move?") about the same block, so a block confirmed at, say, second 4 must
+# not be "confirmed" on one path and "indeterminate" on the other.
+CONFIRM_WAIT_S = 8.0
+
 
 def verify_replay_proof(proof: str, payer_addr: str, h: str, method: str, path: str) -> bool:
     """True when `proof` is the payer's own signature over (block hash, method, path)."""
@@ -188,7 +195,7 @@ def settled_replay(block: dict, amount_raw: int, pay_to_addr: str, rpc,
             "network": "nano:mainnet", "replay": True, "payer": payer}
 
 
-def settle_block(block: dict, rpc, confirm_timeout=8.0) -> dict:
+def settle_block(block: dict, rpc, confirm_timeout=CONFIRM_WAIT_S) -> dict:
     """Broadcast the verified block and poll for confirmation.
 
     A rejected or lost broadcast is NOT proof the block did not land: a node

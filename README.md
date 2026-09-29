@@ -89,8 +89,9 @@ Beta (v0.2.10). Proven on mainnet with real funds: live paid calls to
 NanoGPT ($0.0000096/call, confirmed on-ledger), full merchant loop
 (verify → settle → confirm, no facilitator), PoW-gated faucet claims,
 and a complete stranger-agent lifecycle (fresh wallet → PoW claim →
-paid API call → confirmed) in under 3 minutes. 53-test suite covers the
-payment path offline. Not audited — keep only working capital in it.
+paid API call → confirmed) in under 3 minutes. 55-test suite covers the
+payment path offline (two faucet tests need the optional `mcp` extra).
+Not audited — keep only working capital in it.
 
 ## Listings
 
@@ -122,4 +123,14 @@ payment path offline. Not audited — keep only working capital in it.
   `127.0.0.1,::1`); any other peer is identified by its socket address.
   If your reverse proxy runs on another host, add its address there, and
   have it overwrite both headers (`proxy_set_header X-Real-IP $remote_addr;`).
+- **Run one worker**: the fork guard (`_seen_previous`) and the replay
+  bound (`_replays`) are per-process, in-memory. Under `uvicorn
+  --workers N` each worker keeps its own copy, so two workers can accept
+  the same payer frontier and one of the two blocks loses the fork race.
+  Serve a single process (scale with a lock in front, not with workers)
+  unless those guards are moved to shared storage. The ledger poll budget
+  is a single value for the whole path (`verify.CONFIRM_WAIT_S`), so the
+  merchant settle loop and the x402 client look at the chain for the same
+  time; a worker that gives up earlier than that reports "indeterminate"
+  for a payment that did land.
 - Not audited. MIT — no warranty.
