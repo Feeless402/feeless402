@@ -86,12 +86,15 @@ def _settle_outcome(rpc, block_hash: str, status_code):
             return True, ledger
         return "indeterminate", "absent"
     # An explicit 402 is a refusal — the merchant says it never broadcast.
-    # Trust it only after one look at the ledger (a re-presented block that
-    # already landed is refused as "not the payer's frontier").
+    # Trust it only after a look at the ledger (a re-presented block that
+    # already landed is refused as "not the payer's frontier"). The look must
+    # be given the SAME budget as the other two branches: a block that just
+    # landed is exactly a block the node has not indexed yet, and this branch
+    # exists to catch a block that landed. A zero-second wait made a
+    # propagating block "absent" here while the same block was "confirmed"
+    # on the 2xx and lost-reply paths.
     explicit_refusal = status_code == 402
-    ledger = _ledger_verdict(
-        rpc, block_hash, wait=0.0 if explicit_refusal else CONFIRM_WAIT_S
-    )
+    ledger = _ledger_verdict(rpc, block_hash, wait=CONFIRM_WAIT_S)
     if ledger:
         return True, ledger
     if explicit_refusal:

@@ -299,6 +299,62 @@ def test_outcome_402_but_block_landed_is_settled():
     assert _settle_outcome(LedgerRPC("confirmed"), "AB" * 32, 402) == (True, "confirmed")
 
 
+def test_outcome_402_block_landed_one_second_later_is_settled(monkeypatch):
+    """The 402 branch must give the ledger the same window the other two get.
+
+    A block that just landed is a block the node may not have indexed yet:
+    `block_info` answers "Block not found" during that window. The 2xx branch
+    and the lost-reply branch poll for CONFIRM_WAIT_S. The 402 branch used to
+    pass wait=0.0, so it made exactly one call and turned a payment that was
+    already on the ledger into (False, "absent") = "not paid" — the payer
+    then re-pays. LedgerRPC answers on its first call, so the two tests above
+    cannot observe how long the 402 branch waits; this one drives a clock.
+    """
+    import time as _time_mod
+
+    import nano_pay.x402 as x
+    from nano_pay.verify import CONFIRM_WAIT_S
+
+    clock = {"t": 0.0}
+
+    class SlowLedgerRPC:
+        """Indexes the block only from second 4 onward."""
+
+        def __init__(self):
+            self.calls = 0
+
+        def call(self, payload):
+            self.calls += 1
+            if clock["t"] >= 4.0:
+                return {"contents": {}, "confirmed": "true"}
+            raise RuntimeError("Block not found")
+
+    monkeypatch.setattr(_time_mod, "time", lambda: clock["t"])
+    monkeypatch.setattr(
+        _time_mod, "sleep", lambda s: clock.__setitem__("t", clock["t"] + s)
+    )
+    rpc = SlowLedgerRPC()
+    assert _settle_outcome(rpc, "AB" * 32, 402) == (True, "confirmed")
+    assert rpc.calls > 1, "the 402 branch gave the ledger no time to see the block"
+
+    # And the invariant it must not lose: a 402 with no block on the ledger
+    # is still a refusal, not an indeterminate outcome. A node that never
+    # finds the block is the one case where "absent" is the right answer.
+    class NeverFoundRPC:
+        def __init__(self):
+            self.calls = 0
+
+        def call(self, payload):
+            self.calls += 1
+            raise RuntimeError("Block not found")
+
+    clock["t"] = 0.0
+    absent_rpc = NeverFoundRPC()
+    assert _settle_outcome(absent_rpc, "AB" * 32, 402) == (False, "absent")
+    assert clock["t"] >= CONFIRM_WAIT_S, "the absence verdict must follow a full wait"
+    assert absent_rpc.calls > 1, "absence must not be declared on a single look"
+
+
 def test_outcome_lost_reply_block_landed_is_settled():
     assert _settle_outcome(LedgerRPC("confirmed"), "AB" * 32, None) == (True, "confirmed")
 
