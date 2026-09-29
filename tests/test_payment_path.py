@@ -672,3 +672,53 @@ def test_block_found_after_a_timeout_is_still_confirmed():
 
     rpc = LaggingLedger()
     assert _ledger_verdict(rpc, "AB" * 32, wait=8.0) == "confirmed"
+
+
+# ---------- an undetermined broadcast is not a failed one ----------
+
+def test_settle_undetermined_outcome_does_not_raise():
+    """process times out and the ledger is unreachable: the outcome is unknown,
+    so settle_block must not raise ("did not happen" is what its own docstring
+    forbids for an undetermined outcome)."""
+
+    class NodeDownBothWays:
+        def process(self, block, subtype):
+            raise TimeoutError("node did not answer the process call")
+
+        def call(self, payload):
+            raise TimeoutError("node did not answer the block_info call")
+
+    payer = nanopy.Account(sk=nanopy.deterministic_key(SEED, 0)).addr
+    rpc = NodeDownBothWays()
+    out = settle_block({"type": "state", "account": payer,
+                        "previous": "4DA37CC62F040730D14E9D57A83D3810C54CBFF1C7A389E477F5A290B28A688F",
+                        "representative": payer, "balance": "0",
+                        "link": "00" * 32, "signature": "00" * 64, "work": "ff00000000000000"},
+                       rpc, confirm_timeout=0.0)
+    assert out["success"] is True and out["confirmed"] is False, out
+
+
+def test_settle_absent_block_still_raises():
+    """The ledger ANSWERED and does not have the block: that is a failed
+    broadcast, and the caller must still see it."""
+
+    class AnswersNoBlock:
+        def process(self, block, subtype):
+            raise TimeoutError("node did not answer the process call")
+
+        def call(self, payload):
+            raise RPCError("block not found")
+
+    payer = nanopy.Account(sk=nanopy.deterministic_key(SEED, 0)).addr
+    # A definite absence still raises, and the bare re-raise keeps the original
+    # broadcast error as the cause; the RPCError("block not found") is what the
+    # ledger said.
+    with pytest.raises(Exception) as ei:
+        settle_block({"type": "state", "account": payer,
+                      "previous": "4DA37CC62F040730D14E9D57A83D3810C54CBFF1C7A389E477F5A290B28A688F",
+                      "representative": payer, "balance": "0",
+                      "link": "00" * 32, "signature": "00" * 64, "work": "ff00000000000000"},
+                     AnswersNoBlock(), confirm_timeout=0.0)
+    # the broadcast error surfaces; the point is that it DID raise for an
+    # answer of "no such block", where the unreachable case returns instead
+    assert ei.value is not None

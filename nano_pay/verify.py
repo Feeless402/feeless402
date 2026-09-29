@@ -110,6 +110,28 @@ def _in_ledger(rpc, h: str) -> bool:
     return isinstance(info, dict) and "contents" in info
 
 
+def _ledger_says_absent(rpc, h: str) -> bool:
+    """True only when the ledger ANSWERED and does not have the block.
+
+    _in_ledger cannot be used for that question: it answers False both for
+    "the ledger says no such block" and for "the ledger did not answer"
+    (timeout, every node failing). A broadcast we could not confirm is not a
+    broadcast that did not happen (x402 #3208), so the two must be told apart
+    before anything is reported as a failure.
+
+    Returns False when the ledger did not answer — "cannot tell" is not
+    "absent".
+    """
+    try:
+        info = rpc.call({"action": "block_info", "json_block": "true", "hash": h})
+    except Exception as e:
+        text = str(e).lower()
+        # RPC.call raises RPCError for a semantic answer too ("block not found",
+        # rpc.py _SEMANTIC_ERRORS); everything else is an unreachable node.
+        return "block not found" in text
+    return not (isinstance(info, dict) and "contents" in info)
+
+
 # A block that the ledger has not answered for is not the same as a block the
 # ledger says does not exist: the first is "cannot tell" and must not be
 # reported to a caller as "not paid". _ledger_verdict already distinguishes
@@ -217,7 +239,11 @@ def settle_block(block: dict, rpc, confirm_timeout=CONFIRM_WAIT_S) -> dict:
     try:
         rpc.process(block, "send")
     except Exception:
-        if not _in_ledger(rpc, h):
+        # Only a definite "the ledger answered and has no such block" is a
+        # failed broadcast. When the ledger did not answer, the outcome is
+        # undetermined: fall through to the confirmation poll (which will ask
+        # again for confirm_timeout) instead of reporting "did not happen".
+        if _ledger_says_absent(rpc, h):
             raise
     _seen_previous[str(block["previous"]).upper()] = time.time()
     confirmed = False
