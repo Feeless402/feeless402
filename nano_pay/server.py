@@ -27,21 +27,21 @@ from .rpc import RPC
 from .verify import PaymentInvalid, settle_block, settled_replay, verify_block
 from .wallet import DEFAULT_DIR, Wallet
 
-SITE_URL = os.environ.get("F402_SITE_URL", "https://feeless402.com")
+SITE_URL = os.environ.get("F402_SITE_URL") or "https://feeless402.com"
 DOCS_URL = os.environ.get(
-    "F402_DOCS_URL", "https://github.com/feeless402/feeless402"
-)
-PRICE_XNO = os.environ.get("F402_PRICE_XNO", "0.0001")
-FAUCET_XNO = os.environ.get("F402_FAUCET_XNO", "0.0005")
-FAUCET_TOPUP_XNO = os.environ.get("F402_FAUCET_TOPUP_XNO", "0.0045")
+    "F402_DOCS_URL"
+) or "https://github.com/feeless402/feeless402"
+PRICE_XNO = os.environ.get("F402_PRICE_XNO") or "0.0001"
+FAUCET_XNO = os.environ.get("F402_FAUCET_XNO") or "0.0005"
+FAUCET_TOPUP_XNO = os.environ.get("F402_FAUCET_TOPUP_XNO") or "0.0045"
 # Kept as a string for xno_to_raw's Decimal path; parsed separately so the
 # "is it switched on" test can't trip over a str/int comparison.
 FAUCET_TOPUP_ON = float(FAUCET_TOPUP_XNO or 0) > 0
 # When the grant size last changed, so dispensed-history math stays honest.
 FAUCET_RATE_CHANGES = [(0.0, 0.005), (1786021000.0, float(FAUCET_XNO))]
-FAUCET_PER_IP_PER_DAY = int(os.environ.get("F402_FAUCET_PER_IP_PER_DAY", "3"))
-FAUCET_GLOBAL_PER_HOUR = int(os.environ.get("F402_FAUCET_GLOBAL_PER_HOUR", "12"))
-FAUCET_POW = os.environ.get("F402_FAUCET_POW", "0") == "1"
+FAUCET_PER_IP_PER_DAY = int(os.environ.get("F402_FAUCET_PER_IP_PER_DAY") or "3")
+FAUCET_GLOBAL_PER_HOUR = int(os.environ.get("F402_FAUCET_GLOBAL_PER_HOUR") or "12")
+FAUCET_POW = (os.environ.get("F402_FAUCET_POW") or "0") == "1"
 # Sibling faucets advertised in railHint — the federation list. Comma-sep.
 FAUCET_FEDERATION = [
     u for u in os.environ.get(

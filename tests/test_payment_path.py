@@ -617,3 +617,84 @@ def test_rail_hint_avoids_known_dead_spec_hosts():
     server = _server_module()
     info = server.rail_hint(100_000_000_000_000)
     assert "x402nano.org" not in json.dumps(info)
+
+
+# ---------- an empty variable is not an absent variable ----------
+#
+# Every knob is read as os.environ.get(NAME, default), where the default only
+# applies when NAME is *absent*. A variable that is present and empty -- what
+# `F402_FAUCET_XNO=${FAUCET_XNO}` in a compose file produces when FAUCET_XNO
+# is unset, and what an empty .env line produces -- returns "" and skips the
+# default. Two of them are parsed at import time, so the whole merchant server
+# fails to start. The fix is `os.environ.get(NAME) or default`.
+#
+# These have to run in a fresh interpreter: by the time this module is
+# imported the server is already loaded and never re-reads the environment.
+
+_EMPTY_ENV_SERVER_PROBE = (
+    "import nano_pay.server as s\n"
+    "print('PRICE=' + repr(s.PRICE_XNO))\n"
+    "print('IMPORT=ok')\n"
+)
+
+_EMPTY_ENV_WALLET_PROBE = (
+    "from nano_pay.wallet import DEFAULT_DIR\n"
+    "print('DIR=' + str(DEFAULT_DIR.resolve()))\n"
+)
+
+
+def _run_probe(source: str, **env_overrides):
+    import subprocess
+
+    env = dict(os.environ)
+    env.update(env_overrides)
+    return subprocess.run(
+        [sys.executable, "-c", source],
+        cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=90,
+    )
+
+
+def test_empty_price_variable_falls_back_to_the_default():
+    """F402_PRICE_XNO="" must mean "unset", not "the empty price"."""
+    r = _run_probe(_EMPTY_ENV_SERVER_PROBE, F402_PRICE_XNO="")
+    assert r.returncode == 0, r.stderr
+    assert "PRICE=''" not in r.stdout, (
+        "an empty F402_PRICE_XNO reached the server as the price: " + r.stdout
+    )
+    assert "PRICE='0.0001'" in r.stdout, (
+        "the server did not fall back to the default price: " + r.stdout
+    )
+    assert "IMPORT=ok" in r.stdout
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "F402_FAUCET_XNO",
+        "F402_FAUCET_PER_IP_PER_DAY",
+        "F402_FAUCET_GLOBAL_PER_HOUR",
+    ],
+)
+def test_empty_numeric_variable_does_not_stop_the_server_from_importing(name):
+    """These are parsed at module level, so an empty value kills the server."""
+    r = _run_probe("import nano_pay.server\nprint('IMPORT=ok')\n", **{name: ""})
+    assert r.returncode == 0, (
+        f"{name}='' stopped nano_pay.server from importing:\n{r.stderr}"
+    )
+    assert "IMPORT=ok" in r.stdout
+
+
+def test_empty_wallet_home_does_not_move_the_seed_into_the_cwd():
+    """NANO_PAY_HOME="" must not resolve to the current working directory:
+    the seed file would be written next to whatever the process started in."""
+    r = _run_probe(_EMPTY_ENV_WALLET_PROBE, NANO_PAY_HOME="")
+    assert r.returncode == 0, r.stderr
+    got = r.stdout.strip().split("DIR=", 1)[1]
+    assert got != os.path.dirname(os.path.dirname(os.path.abspath(__file__))), (
+        f"an empty NANO_PAY_HOME put the wallet in {got}"
+    )
+    assert got.endswith(".nano-pay"), f"unexpected wallet dir: {got}"
