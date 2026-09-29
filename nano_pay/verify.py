@@ -110,6 +110,14 @@ def _in_ledger(rpc, h: str) -> bool:
     return isinstance(info, dict) and "contents" in info
 
 
+# A block that the ledger has not answered for is not the same as a block the
+# ledger says does not exist: the first is "cannot tell" and must not be
+# reported to a caller as "not paid". _ledger_verdict already distinguishes
+# them internally (any Exception -> None, a real answer -> "present"/
+# "confirmed"); this marker carries that distinction out of the loop.
+UNREACHABLE = "unreachable"
+
+
 # Re-presented authorizations already honored: (hash, who) -> times served.
 _replays: dict = {}
 # GHSA-cx37-j5vc-c967: a retry at ~16 minutes fell outside the old 15-minute window and came back paid

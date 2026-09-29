@@ -13,6 +13,7 @@ import pytest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from nano_pay import AmountError, raw_to_xno, xno_to_raw
+from nano_pay.rpc import RPCError
 from nano_pay.verify import (
     PaymentInvalid,
     _seen_previous,
@@ -617,3 +618,57 @@ def test_rail_hint_avoids_known_dead_spec_hosts():
     server = _server_module()
     info = server.rail_hint(100_000_000_000_000)
     assert "x402nano.org" not in json.dumps(info)
+
+
+# ---------- an unreachable ledger is not a refusal (402 branch) ----------
+
+def test_outcome_402_unreachable_ledger_is_not_unpaid():
+    """The merchant says 402 and the ledger does not answer: whether the block
+    landed is unknown, so the caller must not be told 'not paid'. One
+    transient timeout on a landed payment used to answer (False, 'absent')."""
+
+    class LaggingLedger:
+        def __init__(self, fail_first):
+            self.calls = 0
+            self.fail_first = fail_first
+
+        def call(self, payload):
+            self.calls += 1
+            if self.calls <= self.fail_first:
+                raise TimeoutError("node did not answer")
+            return {"contents": {}, "confirmed": "true"}
+
+    settled, ledger = _settle_outcome(LaggingLedger(1), "AB" * 32, 402)
+    assert settled == "indeterminate", settled
+    assert ledger == "unreachable", ledger
+
+    # The ledger answered, and it does not have the block: still a refusal.
+    # RPC.call raises RPCError("block not found") for that case (rpc.py
+    # _SEMANTIC_ERRORS), which is what the existing LedgerRPC(None) fixture
+    # models, so a landed-then-gone block is still reported as unpaid.
+    class AnswersNoBlock:
+        def call(self, payload):
+            raise RPCError("block not found")
+
+    assert _settle_outcome(AnswersNoBlock(), "AB" * 32, 402) == (False, "absent")
+
+
+def test_block_found_after_a_timeout_is_still_confirmed():
+    """The marker must not swallow a real answer: a block that appears on a
+    later call is confirmed, not 'unreachable'."""
+
+    class LaggingLedger:
+        def __init__(self):
+            self.calls = 0
+
+        def call(self, payload):
+            self.calls += 1
+            if self.calls == 1:
+                raise TimeoutError("node did not answer")
+            return {"contents": {}, "confirmed": "true"}
+
+    import nano_pay.x402 as x
+    from nano_pay.x402 import _ledger_verdict, UNREACHABLE
+
+    rpc = LaggingLedger()
+    assert _ledger_verdict(rpc, "AB" * 32, wait=8.0) == "confirmed"

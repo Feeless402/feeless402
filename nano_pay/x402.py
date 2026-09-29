@@ -19,7 +19,7 @@ from urllib.parse import urlparse
 import requests
 
 from . import raw_to_xno
-from .verify import CONFIRM_WAIT_S
+from .verify import CONFIRM_WAIT_S, UNREACHABLE
 
 
 class X402Error(Exception):
@@ -53,6 +53,7 @@ def _ledger_verdict(rpc, block_hash: str, wait: float = 0.0):
 
     deadline = time.time() + wait
     verdict = None
+    unreachable = False
     while True:
         try:
             info = rpc.call(
@@ -64,10 +65,28 @@ def _ledger_verdict(rpc, block_hash: str, wait: float = 0.0):
                     if str(info.get("confirmed")).lower() == "true"
                     else "present"
                 )
-        except Exception:
-            verdict = None
+                unreachable = False
+            else:
+                # the ledger answered: it does not have the block
+                verdict = None
+                unreachable = False
+        except Exception as e:
+            # Distinguish "the ledger answered: no such block" from "the ledger
+            # did not answer at all". RPC.call raises RPCError for both, but the
+            # text differs: a node that knows the block does not exist answers
+            # with a semantic error ("block not found"), while an unreachable or
+            # failing node ends the failover loop with "all RPC nodes failed".
+            # Only the second is "cannot tell", and only that one may not be
+            # reported to a caller as "not paid".
+            text = str(e).lower()
+            if "block not found" in text or "account not found" in text:
+                verdict = None
+                unreachable = False
+            else:
+                verdict = None
+                unreachable = True
         if verdict == "confirmed" or time.time() >= deadline:
-            return verdict
+            return UNREACHABLE if (unreachable and verdict is None) else verdict
         time.sleep(0.5)
 
 
@@ -92,8 +111,14 @@ def _settle_outcome(rpc, block_hash: str, status_code):
     ledger = _ledger_verdict(
         rpc, block_hash, wait=0.0 if explicit_refusal else CONFIRM_WAIT_S
     )
-    if ledger:
+    if ledger and ledger != UNREACHABLE:
         return True, ledger
+    if ledger == UNREACHABLE:
+        # The merchant refused, but the ledger did not answer, so whether this
+        # block landed is unknown. Answering False here reports a payment that
+        # may be on the chain as "not paid" and invites the caller to pay a
+        # second time — the very state this module avoids on the 2xx path.
+        return "indeterminate", "unreachable"
     if explicit_refusal:
         return False, "absent"
     return "indeterminate", "absent"
