@@ -220,3 +220,24 @@ def test_forwarded_headers_from_a_stranger_are_ignored():
     spoof = {"x-real-ip": "10.9.9.9", "x-forwarded-for": "10.8.8.8"}
     assert _client_ip(FakeRequest("203.0.113.9", spoof)) == "203.0.113.9"
     assert _client_ip(FakeRequest("127.0.0.1", spoof)) == "10.9.9.9"   # behind the local proxy
+
+
+def test_journal_write_failure_refuses_to_send_payment(tmp_path, net, monkeypatch):
+    """If the crash-recovery journal cannot persist, no signed block may leave."""
+    calls, script = net
+    w = FakeWallet(tmp_path)
+    script += [quote]
+
+    def fail_replace(src, dst):
+        raise OSError("disk unavailable")
+
+    monkeypatch.setattr(x402.os, "replace", fail_replace)
+
+    with pytest.raises(x402.X402Error, match="refusing to send payment"):
+        x402.request_with_payment(
+            "GET", "https://m.example/premium", w, rpc=None, max_raw=1000
+        )
+
+    assert w.signed == 1
+    assert len(calls) == 1, "payment was sent even though the retry journal was not durable"
+    assert paid_hdr(calls[0]) is None
