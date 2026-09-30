@@ -331,14 +331,26 @@ def _journal_load(wallet) -> dict:
 
 
 def _journal_save(wallet, j: dict) -> None:
+    """Persist pending-payment state before a signed block can leave.
+
+    Retry safety depends on this write.  If it fails, sending the block would
+    recreate the pre-journal double-charge risk after a crash, so fail closed
+    and leave the payment unsent.
+    """
     p = _journal_path(wallet)
+    tmp = p.with_suffix(".tmp")
     try:
         p.parent.mkdir(parents=True, exist_ok=True)
-        tmp = p.with_suffix(".tmp")
         tmp.write_text(json.dumps(j, indent=1))
         os.replace(tmp, p)
-    except Exception:
-        pass                   # a journal we cannot write degrades to the old behavior, never blocks a payment
+    except Exception as e:
+        try:
+            tmp.unlink(missing_ok=True)
+        except Exception:
+            pass
+        raise X402Error(
+            f"cannot persist pending payment journal at {p}; refusing to send payment"
+        ) from e
 
 
 def _journal_key(method: str, url: str, pay_to: str, amount: int) -> str:
