@@ -133,6 +133,39 @@ def test_new_call_after_crash_re_presents_journaled_block(tmp_path, net):
     assert calls[-1].get("X-PAYMENT-PROOF"), "re-presentation carries no payer proof"
 
 
+def test_explicit_402_with_unreachable_ledger_is_indeterminate():
+    class OfflineRPC:
+        def call(self, req):
+            raise x402.RPCError("all RPC nodes failed, last error: offline")
+
+    settled, ledger = x402._settle_outcome(OfflineRPC(), "A" * 64, 402)
+    assert settled == "indeterminate"
+    assert ledger == "unreachable"
+
+
+def test_represented_402_with_unreachable_ledger_never_signs_again(tmp_path, net, monkeypatch):
+    calls, script = net
+    w = FakeWallet(tmp_path)
+
+    script += [quote, lost, lost, lost]
+    with pytest.raises(x402.PaidRequestFailed):
+        x402.request_with_payment(
+            "GET", "https://m.example/premium", w, rpc=None, max_raw=1000
+        )
+    assert w.signed == 1
+
+    monkeypatch.setattr(x402, "_ledger_verdict", lambda rpc, h, wait=0.0: "unreachable")
+    script += [quote, quote]
+    with pytest.raises(x402.PaidRequestFailed) as exc:
+        x402.request_with_payment(
+            "GET", "https://m.example/premium", w, rpc=None, max_raw=1000
+        )
+
+    assert w.signed == 1, "an unavailable ledger must never authorize a replacement payment"
+    assert exc.value.receipt["settled"] == "indeterminate"
+    assert exc.value.receipt["ledger"] == "unreachable"
+
+
 def test_served_payment_is_not_re_presented_for_the_next_purchase(tmp_path, net):
     calls, script = net
     w = FakeWallet(tmp_path)
