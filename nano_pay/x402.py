@@ -99,8 +99,10 @@ def _settle_outcome(rpc, block_hash: str, status_code):
         # success must not become a receipt that says "paid" (declared_safe
         # mode of the #3208 retry-safety battery).
         ledger = _ledger_verdict(rpc, block_hash, wait=CONFIRM_WAIT_S)
-        if ledger:
+        if ledger in ("confirmed", "present"):
             return True, ledger
+        if ledger == "unreachable":
+            return "indeterminate", "unreachable"
         return "indeterminate", "absent"
     # An explicit 402 is a refusal — the merchant says it never broadcast.
     # Trust it only after one look at the ledger (a re-presented block that
