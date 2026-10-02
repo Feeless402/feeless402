@@ -322,10 +322,31 @@ def _journal_path(wallet) -> Path:
 
 
 def _journal_load(wallet) -> dict:
+    """Load retry state without silently discarding a possibly-live payment.
+
+    A missing journal means there is no pending state. Any other read or parse
+    failure is ambiguous: a signed block may already be recorded there, so
+    fail closed rather than treating the journal as empty and signing again.
+    """
+    p = _journal_path(wallet)
     try:
-        j = json.loads(_journal_path(wallet).read_text())
-    except Exception:
+        raw = p.read_text()
+    except FileNotFoundError:
         return {}
+    except Exception as e:
+        raise X402Error(
+            f"cannot read pending payment journal at {p}; refusing to send payment"
+        ) from e
+    try:
+        j = json.loads(raw)
+    except Exception as e:
+        raise X402Error(
+            f"pending payment journal at {p} is invalid; refusing to send payment"
+        ) from e
+    if not isinstance(j, dict):
+        raise X402Error(
+            f"pending payment journal at {p} is invalid; refusing to send payment"
+        )
     now = time.time()
     return {k: v for k, v in j.items() if isinstance(v, dict) and now - float(v.get("t", 0)) < JOURNAL_TTL_S}
 
