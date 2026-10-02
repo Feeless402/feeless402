@@ -341,8 +341,35 @@ def _journal_save(wallet, j: dict) -> None:
         pass                   # a journal we cannot write degrades to the old behavior, never blocks a payment
 
 
-def _journal_key(method: str, url: str, pay_to: str, amount: int) -> str:
-    return hashlib.sha256(f"{method.upper()}|{url}|{pay_to}|{amount}".encode()).hexdigest()[:32]
+def _request_fingerprint(req_kwargs: dict) -> str:
+    """Bind retry state to the operation payload, not only URL and price."""
+    payload = {}
+    if "json" in req_kwargs:
+        payload["json"] = req_kwargs["json"]
+    if "data" in req_kwargs:
+        data = req_kwargs["data"]
+        if isinstance(data, bytes):
+            data = {"__bytes__": base64.b64encode(data).decode()}
+        payload["data"] = data
+    encoded = json.dumps(
+        payload,
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    )
+    return hashlib.sha256(encoded.encode()).hexdigest()
+
+
+def _journal_key(
+    method: str,
+    url: str,
+    pay_to: str,
+    amount: int,
+    request_fingerprint: str = "",
+) -> str:
+    return hashlib.sha256(
+        f"{method.upper()}|{url}|{pay_to}|{amount}|{request_fingerprint}".encode()
+    ).hexdigest()[:32]
 
 
 def _replay_message(block_hash: str, method: str, path: str) -> bytes:
@@ -409,8 +436,11 @@ def request_with_payment(
             f"{raw_to_xno(max_raw)} XNO — refusing to pay"
         )
 
-    jkey = _journal_key(method, url, pay_to, amount)
-    journal = _journal_load(wallet)
+    request_fingerprint = _request_fingerprint(req_kwargs)
+    jkey = _journal_key(method, url, pay_to, amount, 
+request_fingerprint)
+    journal =
+ _journal_load(wallet)
     entry = journal.get(jkey)
     represented = bool(entry)
     if entry:
