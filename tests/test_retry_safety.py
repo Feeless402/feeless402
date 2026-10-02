@@ -133,6 +133,16 @@ def test_new_call_after_crash_re_presents_journaled_block(tmp_path, net):
     assert calls[-1].get("X-PAYMENT-PROOF"), "re-presentation carries no payer proof"
 
 
+def test_2xx_with_unreachable_ledger_is_indeterminate():
+    class OfflineRPC:
+        def call(self, req):
+            raise x402.RPCError("all RPC nodes failed, last error: offline")
+
+    settled, ledger = x402._settle_outcome(OfflineRPC(), "A" * 64, 200)
+    assert settled == "indeterminate"
+    assert ledger == "unreachable"
+
+
 def test_explicit_402_with_unreachable_ledger_is_indeterminate():
     class OfflineRPC:
         def call(self, req):
