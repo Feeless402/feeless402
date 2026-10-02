@@ -7,6 +7,7 @@
 No network, no real funds.
 """
 import base64
+import hashlib
 import json
 import os
 import sys
@@ -131,6 +132,72 @@ def test_new_call_after_crash_re_presents_journaled_block(tmp_path, net):
     assert w.signed == 1, "a new call after a crash paid again: double charge"
     assert paid_hdr(calls[-1]) == first
     assert calls[-1].get("X-PAYMENT-PROOF"), "re-presentation carries no payer proof"
+
+
+def test_different_post_body_does_not_reuse_pending_payment(tmp_path, net):
+    calls, script = net
+    w = FakeWallet(tmp_path)
+    script += [quote, lost, lost, lost]
+    with pytest.raises(x402.PaidRequestFailed):
+        x402.request_with_payment(
+            "POST",
+            "https://m.example/mutate",
+            w,
+            rpc=None,
+            max_raw=1000,
+            json={"operation": "first"},
+        )
+    first = paid_hdr(calls[1])
+
+    script += [quote, served]
+    r, rec = x402.request_with_payment(
+        "POST",
+        "https://m.example/mutate",
+        w,
+        rpc=None,
+        max_raw=1000,
+        json={"operation": "second"},
+    )
+    assert r.status_code == 200
+    assert w.signed == 2, "different POST bodies must not share pending payment state"
+    assert paid_hdr(calls[-1]) != first
+
+
+def test_different_params_do_not_reuse_pending_payment(tmp_path, net):
+    calls, script = net
+    w = FakeWallet(tmp_path)
+    script += [quote, lost, lost, lost]
+    with pytest.raises(x402.PaidRequestFailed):
+        x402.request_with_payment(
+            "GET",
+            "https://m.example/search",
+            w,
+            rpc=None,
+            max_raw=1000,
+            params={"q": "first"},
+        )
+    first = paid_hdr(calls[1])
+
+    script += [quote, served]
+    r, rec = x402.request_with_payment(
+        "GET",
+        "https://m.example/search",
+        w,
+        rpc=None,
+        max_raw=1000,
+        params={"q": "second"},
+    )
+    assert r.status_code == 200
+    assert w.signed == 2, "different query params must not share pending payment state"
+    assert paid_hdr(calls[-1]) != first
+
+
+def test_payloadless_journal_key_keeps_legacy_identity():
+    legacy = hashlib.sha256(
+        f"GET|https://m.example/premium|{PAY_TO}|100".encode()
+    ).hexdigest()[:32]
+    assert x402._request_fingerprint({}) == ""
+    assert x402._journal_key("GET", "https://m.example/premium", PAY_TO, 100, "") == legacy
 
 
 def test_served_payment_is_not_re_presented_for_the_next_purchase(tmp_path, net):
