@@ -342,7 +342,11 @@ def _journal_save(wallet, j: dict) -> None:
 
 
 def _request_fingerprint(req_kwargs: dict) -> str:
-    """Bind retry state to the operation payload, not only URL and price."""
+    """Bind retry state to request body/query identity.
+
+    Return an empty string for requests with no body or params so their journal
+    key stays byte-for-byte compatible with the pre-fingerprint format.
+    """
     payload = {}
     if "json" in req_kwargs:
         payload["json"] = req_kwargs["json"]
@@ -351,6 +355,10 @@ def _request_fingerprint(req_kwargs: dict) -> str:
         if isinstance(data, bytes):
             data = {"__bytes__": base64.b64encode(data).decode()}
         payload["data"] = data
+    if "params" in req_kwargs:
+        payload["params"] = req_kwargs["params"]
+    if not payload:
+        return ""
     encoded = json.dumps(
         payload,
         sort_keys=True,
@@ -367,9 +375,10 @@ def _journal_key(
     amount: int,
     request_fingerprint: str = "",
 ) -> str:
-    return hashlib.sha256(
-        f"{method.upper()}|{url}|{pay_to}|{amount}|{request_fingerprint}".encode()
-    ).hexdigest()[:32]
+    identity = f"{method.upper()}|{url}|{pay_to}|{amount}"
+    if request_fingerprint:
+        identity += f"|{request_fingerprint}"
+    return hashlib.sha256(identity.encode()).hexdigest()[:32]
 
 
 def _replay_message(block_hash: str, method: str, path: str) -> bytes:
@@ -437,10 +446,8 @@ def request_with_payment(
         )
 
     request_fingerprint = _request_fingerprint(req_kwargs)
-    jkey = _journal_key(method, url, pay_to, amount, 
-request_fingerprint)
-    journal =
- _journal_load(wallet)
+    jkey = _journal_key(method, url, pay_to, amount, request_fingerprint)
+    journal = _journal_load(wallet)
     entry = journal.get(jkey)
     represented = bool(entry)
     if entry:
