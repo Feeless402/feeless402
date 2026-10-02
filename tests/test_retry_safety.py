@@ -133,6 +133,25 @@ def test_new_call_after_crash_re_presents_journaled_block(tmp_path, net):
     assert calls[-1].get("X-PAYMENT-PROOF"), "re-presentation carries no payer proof"
 
 
+def test_invalid_retry_journal_fails_closed_before_signing(tmp_path, net):
+    calls, script = net
+    w = FakeWallet(tmp_path)
+    x402._journal_path(w).write_text("{not valid json")
+    script += [quote]
+
+    with pytest.raises(x402.X402Error, match="journal.*invalid"):
+        x402.request_with_payment(
+            "GET",
+            "https://m.example/premium",
+            w,
+            rpc=None,
+            max_raw=1000,
+        )
+
+    assert w.signed == 0, "ambiguous journal state must never authorize a fresh payment"
+    assert len(calls) == 1, "only the unpaid quote request may leave before journal validation"
+
+
 def test_served_payment_is_not_re_presented_for_the_next_purchase(tmp_path, net):
     calls, script = net
     w = FakeWallet(tmp_path)
