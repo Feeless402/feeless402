@@ -19,6 +19,7 @@ from urllib.parse import urlparse
 import requests
 
 from . import raw_to_xno
+from .rpc import RPCError
 from .verify import CONFIRM_WAIT_S
 
 
@@ -45,29 +46,45 @@ class PaidRequestFailed(X402Error):
 
 
 def _ledger_verdict(rpc, block_hash: str, wait: float = 0.0):
-    """Ask the ledger about a block we signed. Returns "confirmed",
-    "present" (seen, not yet confirmed) or None (not found / unreachable).
-    `wait` bounds how long to keep looking for a block that may still be
-    propagating."""
+    """Ask the ledger about a block we signed.
+
+    Returns "confirmed", "present", None when the node reached the ledger
+    and the block is absent, or "unreachable" when the ledger could not be
+    queried. Absence and an unavailable ledger are intentionally distinct:
+    only proven absence can authorize a fresh payment.
+    """
     import time
 
     deadline = time.time() + wait
     verdict = None
+    reachable = False
     while True:
         try:
             info = rpc.call(
                 {"action": "block_info", "json_block": "true", "hash": block_hash}
             )
+            reachable = True
             if isinstance(info, dict) and "contents" in info:
                 verdict = (
                     "confirmed"
                     if str(info.get("confirmed")).lower() == "true"
                     else "present"
                 )
+        except RPCError as e:
+            if "block not found" in str(e).lower():
+                reachable = True
+                verdict = None
+            else:
+                verdict = "unreachable"
         except Exception:
-            verdict = None
-        if verdict == "confirmed" or time.time() >= deadline:
+            verdict = "unreachable"
+
+        if verdict == "confirmed":
             return verdict
+        if time.time() >= deadline:
+            if verdict == "present":
+                return verdict
+            return None if reachable and verdict != "unreachable" else "unreachable"
         time.sleep(0.5)
 
 
@@ -92,8 +109,10 @@ def _settle_outcome(rpc, block_hash: str, status_code):
     ledger = _ledger_verdict(
         rpc, block_hash, wait=0.0 if explicit_refusal else CONFIRM_WAIT_S
     )
-    if ledger:
+    if ledger in ("confirmed", "present"):
         return True, ledger
+    if ledger == "unreachable":
+        return "indeterminate", "unreachable"
     if explicit_refusal:
         return False, "absent"
     return "indeterminate", "absent"
@@ -465,12 +484,21 @@ def request_with_payment(
 
     if represented and r2.status_code == 402:
         verdict = _ledger_verdict(rpc, new_frontier, wait=0.0)
-        if verdict:
+        if verdict in ("confirmed", "present"):
             # We paid (the ledger says so) and the merchant will not honor it: say so. Never pay twice.
             raise PaidRequestFailed("merchant refused a payment that is already on the ledger (paid, not served)",
                                     {"amount_xno": raw_to_xno(amount), "pay_to": pay_to, "block": new_frontier,
                                      "settled": True, "ledger": verdict, "note": _OUTCOME_NOTE[True]})
-        # The earlier block never landed (and cannot now: a stale frontier). Only now is a fresh payment right.
+        if verdict == "unreachable":
+            # A failed ledger lookup is not proof that the earlier block never
+            # landed. Keep the journal and refuse to sign a replacement.
+            raise PaidRequestFailed(
+                "merchant refused the re-presented payment and the ledger is unreachable; refusing to pay again",
+                {"amount_xno": raw_to_xno(amount), "pay_to": pay_to, "block": new_frontier,
+                 "settled": "indeterminate", "ledger": "unreachable",
+                 "note": _OUTCOME_NOTE["indeterminate"], "will_re_present": True},
+            )
+        # The ledger was reachable and the earlier block is absent. Only now is a fresh payment right.
         journal.pop(jkey, None)
         _journal_save(wallet, journal)
         headers.pop("X-PAYMENT-PROOF", None)
