@@ -146,3 +146,27 @@ Not audited — keep only working capital in it.
   time; a worker that gives up earlier than that reports "indeterminate"
   for a payment that did land.
 - Not audited. MIT — no warranty.
+
+## Thanks
+
+Feeless402 is better because people took the time to read the code, break it,
+and say so. Thank you to:
+
+- **[giskard09](https://github.com/giskard09)**: privately reported that a
+  retry after a lost reply could pay twice, then re-verified the fix with an
+  independent harness (advisory GHSA-cx37-j5vc-c967; v0.2.9 and v0.2.10).
+- **[pyfile-toolkit](https://github.com/pyfile-toolkit)**: fixed the dead
+  railHint spec link, exact XNO/raw conversion and the faucet's per-claim
+  amount (#5–#7); unified the ledger wait for the whole payment path (#9,
+  v0.2.11); and reported the unreachable-ledger, receipt-checker and blank
+  setting issues fixed in v0.2.12 (#10–#14).
+- **[enricoaboujaoude-droid](https://github.com/enricoaboujaoude-droid)**:
+  reported the payment-journal and request-binding issues fixed in v0.2.12
+  (#15–#18).
+- **[dhyabi2](https://github.com/dhyabi2)**: contributed the standalone
+  settlement-receipt verifier, `nano_pay.receipt` (#4).
+- **[Circadian-agent](https://github.com/Circadian-agent)**: spotted that the
+  railHint spec field pointed at a disabled deployment (#2).
+
+Found something? Open an issue, or for anything that could cost a user money,
+report it privately through GitHub's security advisories.
