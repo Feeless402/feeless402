@@ -23,7 +23,7 @@ never moves funds — it only reads.
 
 from dataclasses import dataclass, asdict
 
-from nano_pay.rpc import RPC
+from nano_pay.rpc import RPC, says_block_not_found
 
 
 class NotFound(Exception):
@@ -32,6 +32,11 @@ class NotFound(Exception):
     def __init__(self, block_hash: str):
         self.block_hash = block_hash
         super().__init__(f"no block with hash {block_hash} on the ledger")
+
+
+class Unreachable(Exception):
+    """The ledger could not be asked (every node failed or timed out). Says
+    nothing about whether the block exists — try again; never treat as NotFound."""
 
 
 class Mismatch(Exception):
@@ -68,11 +73,13 @@ def _lookup(block_hash: str, rpc_urls, timeout: float = 20.0) -> dict:
         return rpc.call(
             {"action": "block_info", "json_block": "true", "hash": block_hash}
         )
-    except Exception:
-        # RPC "block not found" is a semantic error and surfaces as an
-        # exception from the client's failover logic. Either way the hash is
-        # not on the ledger for this verifier's purposes.
-        return None
+    except Exception as e:
+        # Only a node's own "block not found" answer means the hash is not on
+        # the ledger. A node we could not reach says nothing either way
+        # (reported by pyfile-toolkit, PR #12).
+        if says_block_not_found(e):
+            return None
+        raise Unreachable(f"could not ask the ledger about {block_hash}: {e}") from e
 
 
 def verify(block_hash: str, expect_raw: int, account: str, rpc_url: str) -> Receipt:
@@ -81,6 +88,7 @@ def verify(block_hash: str, expect_raw: int, account: str, rpc_url: str) -> Rece
 
     Raises:
         NotFound: the node reports no block with this hash.
+        Unreachable: no node could be asked; the block may or may not exist.
         Mismatch: the block is confirmed but the amount or destination differs
             from what was expected.
     """

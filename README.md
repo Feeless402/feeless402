@@ -56,6 +56,18 @@ adds two follow-ups from that re-verification: a block of unknown age is never
 treated as inside the window, and forwarded IP headers are trusted only from a
 configured proxy.)
 
+v0.2.12 closes the remaining ways a client could pay twice. A ledger that
+cannot be reached is never read as "not paid"; a refusal gets the same
+confirmation window as every other outcome; a payment record that cannot be
+written or read stops the payment instead of being forgotten; and a payment
+record is tied to the request's body and query, so two different operations
+at the same price never share one. Also: the receipt checker raises
+`Unreachable` instead of `NotFound` when no node answers, and a blank `F402_*`
+setting means "use the default" (a blank top-up stays off). Reported by
+[pyfile-toolkit](https://github.com/pyfile-toolkit) (#10–#14) and
+[enricoaboujaoude-droid](https://github.com/enricoaboujaoude-droid) (#15–#18);
+fixes written independently against their reports and tests.
+
 ## Design notes
 
 - **Self-custody:** seed never leaves `~/.nano-pay/wallet.json` (0600).
@@ -85,11 +97,11 @@ but don't fire concurrent payments from one wallet).
 
 ## Status
 
-Beta (v0.2.11). Proven on mainnet with real funds: live paid calls to
+Beta (v0.2.12). Proven on mainnet with real funds: live paid calls to
 NanoGPT ($0.0000096/call, confirmed on-ledger), full merchant loop
 (verify → settle → confirm, no facilitator), PoW-gated faucet claims,
 and a complete stranger-agent lifecycle (fresh wallet → PoW claim →
-paid API call → confirmed) in under 3 minutes. 55-test suite covers the
+paid API call → confirmed) in under 3 minutes. 71-test suite covers the
 payment path offline (two faucet tests need the optional `mcp` extra).
 Not audited — keep only working capital in it.
 

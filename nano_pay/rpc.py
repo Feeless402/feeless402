@@ -29,6 +29,16 @@ class RPCError(Exception):
     pass
 
 
+def says_block_not_found(exc: Exception) -> bool:
+    """True only when a node ANSWERED that it has no such block.
+
+    Every other failure (timeouts, every node down, garbage replies) means the
+    ledger could not be asked, and "could not ask" must never be read as "the
+    payment did not happen" — that is how a client ends up paying twice.
+    """
+    return str(exc).lower().strip() == "block not found"
+
+
 class RPC:
     def __init__(self, urls=None, timeout=20, work_urls=None, work_key=None):
         self.urls = urls or list(DEFAULT_RPCS)

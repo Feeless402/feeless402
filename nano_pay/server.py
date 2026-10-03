@@ -27,24 +27,38 @@ from .rpc import RPC
 from .verify import PaymentInvalid, settle_block, settled_replay, verify_block
 from .wallet import DEFAULT_DIR, Wallet
 
-SITE_URL = os.environ.get("F402_SITE_URL", "https://feeless402.com")
-DOCS_URL = os.environ.get(
+
+def _env(name: str, default: str, if_blank: str = None) -> str:
+    """A setting that is present but blank (a compose file's `X=${UNSET}`, an
+    empty .env line) means "not set", not "set to nothing": it gets the default
+    instead of crashing int() at import or silently dropping a list (reported
+    by pyfile-toolkit, PR #14). `if_blank` overrides that where blank must stay
+    the safe choice."""
+    v = os.environ.get(name)
+    if v is None or not v.strip():
+        return default if (v is None or if_blank is None) else if_blank
+    return v
+
+
+SITE_URL = _env("F402_SITE_URL", "https://feeless402.com")
+DOCS_URL = _env(
     "F402_DOCS_URL", "https://github.com/feeless402/feeless402"
 )
-PRICE_XNO = os.environ.get("F402_PRICE_XNO", "0.0001")
-FAUCET_XNO = os.environ.get("F402_FAUCET_XNO", "0.0005")
-FAUCET_TOPUP_XNO = os.environ.get("F402_FAUCET_TOPUP_XNO", "0.0045")
+PRICE_XNO = _env("F402_PRICE_XNO", "0.0001")
+FAUCET_XNO = _env("F402_FAUCET_XNO", "0.0005")
+# Blank stays OFF: a blank line must never switch the farmable top-up back on.
+FAUCET_TOPUP_XNO = _env("F402_FAUCET_TOPUP_XNO", "0.0045", if_blank="0")
 # Kept as a string for xno_to_raw's Decimal path; parsed separately so the
 # "is it switched on" test can't trip over a str/int comparison.
 FAUCET_TOPUP_ON = float(FAUCET_TOPUP_XNO or 0) > 0
 # When the grant size last changed, so dispensed-history math stays honest.
 FAUCET_RATE_CHANGES = [(0.0, 0.005), (1786021000.0, float(FAUCET_XNO))]
-FAUCET_PER_IP_PER_DAY = int(os.environ.get("F402_FAUCET_PER_IP_PER_DAY", "3"))
-FAUCET_GLOBAL_PER_HOUR = int(os.environ.get("F402_FAUCET_GLOBAL_PER_HOUR", "12"))
-FAUCET_POW = os.environ.get("F402_FAUCET_POW", "0") == "1"
+FAUCET_PER_IP_PER_DAY = int(_env("F402_FAUCET_PER_IP_PER_DAY", "3"))
+FAUCET_GLOBAL_PER_HOUR = int(_env("F402_FAUCET_GLOBAL_PER_HOUR", "12"))
+FAUCET_POW = _env("F402_FAUCET_POW", "0") == "1"
 # Sibling faucets advertised in railHint — the federation list. Comma-sep.
 FAUCET_FEDERATION = [
-    u for u in os.environ.get(
+    u for u in _env(
         "F402_FAUCETS", "https://feeless402.com"
     ).split(",") if u
 ]
@@ -312,7 +326,7 @@ def _block_shape_ok(block) -> bool:
 # believed only when the connection itself comes from a trusted proxy (the
 # uvicorn convention; default loopback). Anyone else gets the socket address.
 TRUSTED_PROXIES = {
-    u.strip() for u in os.environ.get(
+    u.strip() for u in _env(
         "F402_TRUSTED_PROXIES", "127.0.0.1,::1").split(",") if u.strip()}
 
 

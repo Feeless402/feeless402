@@ -21,7 +21,7 @@ import nanopy
 
 from . import raw_to_xno
 
-DEFAULT_DIR = Path(os.environ.get("NANO_PAY_HOME", Path.home() / ".nano-pay"))
+DEFAULT_DIR = Path(os.environ.get("NANO_PAY_HOME") or Path.home() / ".nano-pay")   # blank = unset, never the cwd
 # Patrick's Self-Hosted Nano Node — long-standing community principal rep,
 # verified online with ~1.3M XNO weight (Aug 2026); user-overridable.
 DEFAULT_REP = "nano_3patrick68y5btibaujyu7zokw7ctu4onikarddphra6qt688xzrszcg4yuo"

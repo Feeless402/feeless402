@@ -1,6 +1,6 @@
 """nano-pay: self-custodied Nano (XNO) wallet + x402 payment client for AI agents."""
 
-__version__ = "0.2.11"
+__version__ = "0.2.12"
 
 RAW_PER_XNO = 10**30
 _DECIMALS = 30  # 1 raw = 10**-30 XNO

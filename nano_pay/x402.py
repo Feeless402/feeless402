@@ -19,6 +19,7 @@ from urllib.parse import urlparse
 import requests
 
 from . import raw_to_xno
+from .rpc import says_block_not_found
 from .verify import CONFIRM_WAIT_S
 
 
@@ -44,30 +45,41 @@ class PaidRequestFailed(X402Error):
         self.receipt = receipt
 
 
+# The ledger could not be asked at all. Distinct from None ("the ledger
+# answered: no such block"): "could not ask" is never proof the money did not
+# move, so it must never lead to signing a second payment. Truthy on purpose —
+# no caller may treat it as "absent" by accident; each one checks for it.
+UNREACHABLE = "unreachable"
+
+
 def _ledger_verdict(rpc, block_hash: str, wait: float = 0.0):
-    """Ask the ledger about a block we signed. Returns "confirmed",
-    "present" (seen, not yet confirmed) or None (not found / unreachable).
-    `wait` bounds how long to keep looking for a block that may still be
-    propagating."""
+    """Ask the ledger about a block we signed. Returns "confirmed", "present"
+    (seen, not yet confirmed), None (the ledger answered that it has no such
+    block) or UNREACHABLE (no answer on the last attempt). `wait` bounds how
+    long to keep looking for a block that may still be propagating."""
     import time
 
     deadline = time.time() + wait
-    verdict = None
+    seen = None            # once a block is seen it stays seen; a later error cannot unsee it
+    unreachable = False
     while True:
         try:
             info = rpc.call(
                 {"action": "block_info", "json_block": "true", "hash": block_hash}
             )
+            unreachable = False
             if isinstance(info, dict) and "contents" in info:
-                verdict = (
+                seen = (
                     "confirmed"
                     if str(info.get("confirmed")).lower() == "true"
-                    else "present"
+                    else (seen or "present")
                 )
-        except Exception:
-            verdict = None
-        if verdict == "confirmed" or time.time() >= deadline:
-            return verdict
+        except Exception as e:
+            unreachable = not says_block_not_found(e)
+        if seen == "confirmed" or time.time() >= deadline:
+            if seen:
+                return seen
+            return UNREACHABLE if unreachable else None
         time.sleep(0.5)
 
 
@@ -76,25 +88,26 @@ def _settle_outcome(rpc, block_hash: str, status_code):
     failed to). The ledger, not the HTTP reply, is the truth.
 
     Returns (settled, ledger): settled is True, False or "indeterminate".
+    Only a ledger that ANSWERED "no such block" after a refusal yields False;
+    a ledger we could not ask always yields "indeterminate".
     """
+    # One budget for every branch (reported by pyfile-toolkit, PR #13): a
+    # block that just landed is exactly one the node has not indexed yet, and
+    # a refusal is where a landed block most needs to be caught.
+    ledger = _ledger_verdict(rpc, block_hash, wait=CONFIRM_WAIT_S)
+    if ledger in ("confirmed", "present"):
+        return True, ledger
+    if ledger == UNREACHABLE:
+        # Reported by pyfile-toolkit (PRs #10, #13) and enricoaboujaoude-droid (#18).
+        return "indeterminate", UNREACHABLE
     if status_code is not None and 200 <= status_code < 300:
         # A 2xx is the merchant's word, not the ledger's. A forged or mistaken
         # success must not become a receipt that says "paid" (declared_safe
         # mode of the #3208 retry-safety battery).
-        ledger = _ledger_verdict(rpc, block_hash, wait=CONFIRM_WAIT_S)
-        if ledger:
-            return True, ledger
         return "indeterminate", "absent"
-    # An explicit 402 is a refusal — the merchant says it never broadcast.
-    # Trust it only after one look at the ledger (a re-presented block that
-    # already landed is refused as "not the payer's frontier").
-    explicit_refusal = status_code == 402
-    ledger = _ledger_verdict(
-        rpc, block_hash, wait=0.0 if explicit_refusal else CONFIRM_WAIT_S
-    )
-    if ledger:
-        return True, ledger
-    if explicit_refusal:
+    # An explicit 402 is a refusal — the merchant says it never broadcast —
+    # and the ledger agrees.
+    if status_code == 402:
         return False, "absent"
     return "indeterminate", "absent"
 
@@ -322,27 +335,65 @@ def _journal_path(wallet) -> Path:
 
 
 def _journal_load(wallet) -> dict:
-    try:
-        j = json.loads(_journal_path(wallet).read_text())
-    except Exception:
+    """The record of payments already signed. No file = nothing pending. A file
+    that exists but cannot be read FAILS CLOSED: an empty journal would forget a
+    block that may already have paid, and the next call would sign another one
+    (reported by enricoaboujaoude-droid, PR #16)."""
+    p = _journal_path(wallet)
+    if not p.exists():
         return {}
+    try:
+        j = json.loads(p.read_text())
+        if not isinstance(j, dict):
+            raise ValueError("not a JSON object")
+    except Exception as e:
+        raise X402Error(f"payment journal {p} cannot be read ({e}); refusing to pay so an already-signed "
+                        f"payment is not forgotten. Inspect the file, then move it aside to continue.") from e
     now = time.time()
     return {k: v for k, v in j.items() if isinstance(v, dict) and now - float(v.get("t", 0)) < JOURNAL_TTL_S}
 
 
-def _journal_save(wallet, j: dict) -> None:
+def _journal_save(wallet, j: dict, required: bool = False) -> None:
+    """required=True is the write BEFORE a payment leaves: if the block cannot be
+    recorded, it is not sent (reported by enricoaboujaoude-droid, PR #15). Later
+    writes only tidy up — re-presenting a block never pays twice — so they
+    may fail quietly."""
     p = _journal_path(wallet)
     try:
         p.parent.mkdir(parents=True, exist_ok=True)
         tmp = p.with_suffix(".tmp")
         tmp.write_text(json.dumps(j, indent=1))
         os.replace(tmp, p)
-    except Exception:
-        pass                   # a journal we cannot write degrades to the old behavior, never blocks a payment
+    except Exception as e:
+        if required:
+            raise X402Error(f"payment journal {p} cannot be written ({e}); refusing to send a payment "
+                            f"that could not be re-presented after a lost reply.") from e
 
 
-def _journal_key(method: str, url: str, pay_to: str, amount: int) -> str:
-    return hashlib.sha256(f"{method.upper()}|{url}|{pay_to}|{amount}".encode()).hexdigest()[:32]
+def _request_fingerprint(req_kwargs: dict) -> str:
+    """What the request carries besides its URL. Two different operations at the
+    same endpoint and price must not share a journal entry, or a retry could
+    re-present one operation's payment for another (reported by
+    enricoaboujaoude-droid, PR #17). Empty when there is no body or params, so
+    the key for a plain GET is unchanged from earlier versions."""
+    parts = []
+    for name in ("params", "json", "data"):
+        v = req_kwargs.get(name)
+        if v is None:
+            continue
+        if isinstance(v, bytes):
+            v = v.decode("utf-8", "replace")
+        elif not isinstance(v, str):
+            v = json.dumps(v, sort_keys=True, default=str)
+        parts.append(f"{name}={v}")
+    return hashlib.sha256("\n".join(parts).encode()).hexdigest() if parts else ""
+
+
+def _journal_key(method: str, url: str, pay_to: str, amount: int, fingerprint: str = "") -> str:
+    base = f"{method.upper()}|{url}|{pay_to}|{amount}"
+    if fingerprint:
+        base += f"|{fingerprint}"
+    return hashlib.sha256(base.encode()).hexdigest()[:32]
 
 
 def _replay_message(block_hash: str, method: str, path: str) -> bytes:
@@ -409,7 +460,7 @@ def request_with_payment(
             f"{raw_to_xno(max_raw)} XNO — refusing to pay"
         )
 
-    jkey = _journal_key(method, url, pay_to, amount)
+    jkey = _journal_key(method, url, pay_to, amount, _request_fingerprint(req_kwargs))
     journal = _journal_load(wallet)
     entry = journal.get(jkey)
     represented = bool(entry)
@@ -423,7 +474,11 @@ def request_with_payment(
         pay_header = build_payment_header(quote, offer, block, pay_to)
         journal[jkey] = {"header": pay_header, "hash": new_frontier, "work_root": work_root,
                          "url": url, "method": method.upper(), "t": time.time()}
-        _journal_save(wallet, journal)          # recorded BEFORE it leaves: a crash mid-send still re-presents it
+        try:
+            _journal_save(wallet, journal, required=True)   # recorded BEFORE it leaves: a crash mid-send still re-presents it
+        except X402Error:
+            wallet.payment_failed(work_root)                # the block never left; release its work
+            raise
     headers["PAYMENT-SIGNATURE"] = pay_header
     headers["X-PAYMENT"] = pay_header
     try:
@@ -464,7 +519,15 @@ def request_with_payment(
         raise PaidRequestFailed(f"no reply from merchant: {e}", base) from e
 
     if represented and r2.status_code == 402:
-        verdict = _ledger_verdict(rpc, new_frontier, wait=0.0)
+        verdict = _ledger_verdict(rpc, new_frontier, wait=CONFIRM_WAIT_S)
+        if verdict == UNREACHABLE:
+            # The merchant refused the block we re-presented and the ledger
+            # cannot be asked whether it landed. Signing a fresh payment now
+            # could pay twice; stop, keep the journal entry, let the caller retry.
+            raise PaidRequestFailed("merchant refused and the ledger could not be checked; not paying again",
+                                    {"amount_xno": raw_to_xno(amount), "pay_to": pay_to, "block": new_frontier,
+                                     "settled": "indeterminate", "ledger": UNREACHABLE,
+                                     "note": _OUTCOME_NOTE["indeterminate"], "will_re_present": True})
         if verdict:
             # We paid (the ledger says so) and the merchant will not honor it: say so. Never pay twice.
             raise PaidRequestFailed("merchant refused a payment that is already on the ledger (paid, not served)",
