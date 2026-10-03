@@ -128,15 +128,29 @@ def _do_request(args, dry_run):
     result = (
         {
             "status_code": r.status_code,
-            "paid": (not dry_run) and info is not None,
+            "paid": info.get("settled", "indeterminate")
+            if not dry_run and info is not None else False,
             "payment": info,
             "body": body if not args.body_only else None,
         }
         if not args.body_only
         else body
     )
+    served = 200 <= r.status_code < 300
     if dry_run or info is None:
-        out(result)
+        # A 402 is the expected successful result of inspecting a quote.
+        out(result, code=0 if served or (dry_run and r.status_code == 402) else 1)
+    if not served or info.get("settled") is not True:
+        # A signed block is a payment attempt, not proof that money moved.
+        # Preserve the receipt, and leave recovery to the caller instead of
+        # warming another payment after a refused or uncertain outcome.
+        print(json.dumps(result, indent=2, default=str), flush=True)
+        block = info.get("block", "unknown")
+        settled = info.get("settled", "indeterminate")
+        print(f"request returned HTTP {r.status_code}; payment settlement: "
+              f"{settled}. Check block {block} before paying again.",
+              file=sys.stderr, flush=True)
+        sys.exit(1)
     # Paid: give the caller their response first, then warm the next block's
     # PoW so the following payment is instant. out() exits, so print first.
     print(json.dumps(result, indent=2, default=str), flush=True)

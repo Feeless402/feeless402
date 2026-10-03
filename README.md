@@ -68,6 +68,14 @@ setting means "use the default" (a blank top-up stays off). Reported by
 [enricoaboujaoude-droid](https://github.com/enricoaboujaoude-droid) (#15–#18);
 fixes written independently against their reports and tests.
 
+The CLI's top-level `paid` field preserves that same three-state settlement
+verdict. `pay` exits nonzero for an HTTP failure or an indeterminate payment,
+and only a served, settled payment announces settlement and warms the next
+block's work. **A nonzero exit does not mean nothing was paid:** inspect the
+`payment` receipt and its block hash before retrying. With `--body-only`, a
+failed or uncertain paid call prints that recovery hash on stderr. `quote`
+still exits zero for a valid HTTP 402 quote, with `paid: false`.
+
 ## Design notes
 
 - **Self-custody:** seed never leaves `~/.nano-pay/wallet.json` (0600).
